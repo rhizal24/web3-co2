@@ -12,8 +12,8 @@ import { cn } from "@/lib/utils";
 import PropTypes from "prop-types";
 
 export const metadata = {
-  title: "TBD Supabase",
-  description: "TBD Supabase - A simple Document management system using Supabase",
+  title: "Carbon Credit",
+  description: "Carbon Credit Dapp",
   icons: {
     icon: "/favicon.ico",
   },
@@ -23,9 +23,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="id">
       <body className={fontVariables}>
-        <Suspense>
-          {children}
-        </Suspense>
+        <Suspense>{children}</Suspense>
       </body>
     </html>
   );
