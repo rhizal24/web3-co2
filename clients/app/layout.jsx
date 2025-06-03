@@ -9,9 +9,7 @@ import {
 import React, { Suspense } from "react";
 import "./globals.css";
 import { cn } from "@/lib/utils";
-import { AuthProvider } from "@/components/AuthProvider";
 import PropTypes from "prop-types";
-import Loading from "@/components/Loading";
 
 export const metadata = {
   title: "TBD Supabase",
@@ -25,12 +23,8 @@ export default function RootLayout({ children }) {
   return (
     <html lang="id">
       <body className={fontVariables}>
-        <Suspense
-          fallback={
-            <Loading className={"fixed h-screen w-screen bg-[url('/bg-comp.webp')] bg-cover"} />
-          }
-        >
-          <AuthProvider>{children}</AuthProvider>
+        <Suspense>
+          {children}
         </Suspense>
       </body>
     </html>
