@@ -38,13 +38,13 @@ export default function Status({
         <div className="mt-2 h-4 w-4 rounded-full bg-green-400"></div>
         <div className="font-eudoxus-light text-3xl">{status}</div>
       </div>
-      <div className="flex h-full w-[57%] items-center justify-between">
-        <div className="w-[70%]">
+      <div className="flex h-full w-[57.5%] items-center justify-between">
+        <div className="w-[73.5%]">
           <input
             type="text"
             value={projectId}
             onChange={handleInputChange}
-            className="font-eudoxus-medium mt-2 w-full rounded-[10px] border border-[#163956] bg-white/20 px-4 py-4 text-xl placeholder-black/30 backdrop-blur-lg focus:outline-none"
+            className="font-eudoxus-medium w-full rounded-[10px] border border-[#163956] bg-white/20 px-4 py-3.5 text-xl placeholder-black/30 backdrop-blur-lg focus:outline-none"
             placeholder="Enter Project ID..."
           />
         </div>
