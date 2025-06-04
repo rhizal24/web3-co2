@@ -1,11 +1,12 @@
 const express = require("express");
 const cors = require("cors");
 const app = express();
-const port = 3000;
+const port = 3002;
 
 app.use(cors());
+app.use(express.json());
 
-// Data Batas Emisi per Jenis Perusahaan
+// Dummy Data: Batas emisi per jenis perusahaan
 const emissionLimits = {
   pangan: 100,
   otomotif: 300,
@@ -13,37 +14,55 @@ const emissionLimits = {
   lain: 200,
 };
 
-// Data Proyek Penghijauan (Offset karbon) per perusahaan
+// Dummy Data: Proyek Penghijauan (Offset karbon) per perusahaan
 const carbonOffsetProjects = [
-  { companyId: "comp1", companyName: "PT Green Farm", offsetTon: 50 },
-  { companyId: "comp2", companyName: "PT Solar Energy", offsetTon: 120 },
+  {
+    id: "proj1", // ID unik proyek
+    companyId: "comp1",
+    companyName: "PT Green Farm",
+    offsetTon: 50,
+    used: false,
+  },
+  {
+    id: "proj2",
+    companyId: "comp2",
+    companyName: "PT Solar Energy",
+    offsetTon: 120,
+    used: false,
+  },
 ];
 
-// Data Emisi Aktual Perusahaan
+// Dummy Data: Emisi Aktual Perusahaan dengan Tahun
 const companyEmissions = [
   {
     companyId: "comp1",
     companyName: "PT Green Farm",
     type: "pangan",
     emissionTon: 90,
+    year: 2023, // Pastikan data tahun sesuai dengan permintaan
+    used: false,
   },
   {
     companyId: "comp2",
     companyName: "PT Solar Energy",
     type: "teknologi",
     emissionTon: 160,
+    year: 2023,
+    used: false,
   },
   {
     companyId: "comp3",
     companyName: "PT Auto Motors",
     type: "otomotif",
     emissionTon: 350,
+    year: 2023,
+    used: false,
   },
 ];
 
-// Mapping Wallet ke Identitas Perusahaan
+// Dummy Data: Wallet ke Identitas Perusahaan
 const walletToCompany = {
-  "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266": {
+  "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266": {
     companyId: "comp1",
     type: "pangan",
     name: "PT Green Farm",
@@ -72,12 +91,25 @@ app.get("/api/emission-limits/:type", (req, res) => {
 
 // Endpoint 2: Proyek Penghijauan (Offset karbon)
 app.get("/api/carbon-offset-projects", (req, res) => {
-  res.json(carbonOffsetProjects);
+  const { companyId } = req.query;
+  const filteredProjects = carbonOffsetProjects.filter(
+    (project) => !project.used && project.companyId === companyId
+  );
+  res.json(filteredProjects);
 });
 
 // Endpoint 3: Emisi Aktual Perusahaan
 app.get("/api/company-emissions", (req, res) => {
-  res.json(companyEmissions);
+  const year = parseInt(req.query.year) || new Date().getFullYear();
+  const companyId = req.query.companyId;
+
+  const filteredEmissions = companyEmissions.filter(
+    (emission) =>
+      emission.year === year &&
+      !emission.used &&
+      emission.companyId === companyId
+  );
+  res.json(filteredEmissions);
 });
 
 // Endpoint 4: Mapping Wallet ke Identitas Perusahaan
@@ -88,6 +120,55 @@ app.get("/api/wallet/:address", (req, res) => {
     return res.status(404).json({ error: "Alamat wallet tidak ditemukan" });
   }
   res.json(data);
+});
+
+// Endpoint 5: Mark Proyek Sebagai Sudah Digunakan
+app.post("/api/mark-project-used", (req, res) => {
+  const { companyId, projectId } = req.body;
+
+  const projectIndex = carbonOffsetProjects.findIndex(
+    (project) => project.companyId === companyId && project.id === projectId
+  );
+
+  if (projectIndex === -1) {
+    return res.status(404).json({ error: "Proyek tidak ditemukan" });
+  }
+
+  carbonOffsetProjects[projectIndex].used = true;
+
+  return res.json({ success: true, message: "Proyek sudah digunakan" });
+});
+
+// Endpoint 6: Update Emisi Tahunan
+app.post("/api/annual-emission-update", (req, res) => {
+  const year = req.body.year || new Date().getFullYear();
+  const companyId = req.body.companyId;
+
+  const emission = companyEmissions.find(
+    (emission) => emission.companyId === companyId && emission.year === year
+  );
+
+  if (!emission) {
+    return res.status(404).json({
+      error: "Emisi untuk perusahaan ini tidak ditemukan untuk tahun tersebut",
+    });
+  }
+
+  const emissionLimit = emissionLimits[emission.type];
+
+  if (emission.emissionTon > emissionLimit) {
+    const debt = emission.emissionTon - emissionLimit;
+    res.json({
+      success: true,
+      message: `${emission.companyName} memiliki utang karbon sebesar ${debt} ton.`,
+    });
+  } else {
+    const credit = emissionLimit - emission.emissionTon;
+    res.json({
+      success: true,
+      message: `${emission.companyName} memiliki karbon kredit sebesar ${credit} ton.`,
+    });
+  }
 });
 
 // Jalankan server

@@ -4,17 +4,17 @@ const fetch = require("node-fetch");
 async function main() {
   const [oracleSigner] = await hre.ethers.getSigners();
 
-  const tokenAddress = "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0";
-  const receiverAddress = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+  const tokenAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // Ganti dengan alamat kontrak yang benar
+  const receiverAddress = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"; // Alamat wallet perusahaan
 
   const CarbonCreditToken = await hre.ethers.getContractFactory(
     "CarbonCreditToken"
   );
   const token = CarbonCreditToken.attach(tokenAddress);
 
-  // 1. Ambil data perusahaan dari wallet address
+  // 1. Ambil data wallet
   const walletInfoResponse = await fetch(
-    `http://localhost:3000/api/wallet/${receiverAddress.toLowerCase()}`
+    `http://localhost:3002/api/wallet/${receiverAddress.toLowerCase()}`
   );
   if (!walletInfoResponse.ok) {
     throw new Error("Wallet address tidak ditemukan di API mapping");
@@ -24,7 +24,7 @@ async function main() {
 
   // 2. Ambil batas emisi perusahaan berdasarkan jenis
   const emissionLimitResponse = await fetch(
-    `http://localhost:3000/api/emission-limits/${walletInfo.type.toLowerCase()}`
+    `http://localhost:3002/api/emission-limits/${walletInfo.type.toLowerCase()}`
   );
   if (!emissionLimitResponse.ok) {
     throw new Error("Jenis perusahaan tidak ditemukan di API batas emisi");
@@ -32,13 +32,14 @@ async function main() {
   const emissionLimit = await emissionLimitResponse.json();
   console.log("Emission limit:", emissionLimit);
 
-  // 3. Ambil data emisi aktual perusahaan dari API
+  // 3. Ambil data emisi perusahaan dari API
+  const year = new Date().getFullYear();
   const emissionsResponse = await fetch(
-    "http://localhost:3000/api/company-emissions"
+    `http://localhost:3002/api/company-emissions?companyId=${walletInfo.companyId}&year=${year}`
   );
   const emissionsData = await emissionsResponse.json();
   const companyEmission = emissionsData.find(
-    (c) => c.companyId === walletInfo.companyId
+    (c) => c.companyId === walletInfo.companyId && c.year === year
   );
   if (!companyEmission) {
     throw new Error("Data emisi perusahaan tidak ditemukan");
@@ -47,7 +48,7 @@ async function main() {
 
   // 4. Ambil data offset karbon (proyek penghijauan)
   const offsetResponse = await fetch(
-    "http://localhost:3000/api/carbon-offset-projects"
+    `http://localhost:3002/api/carbon-offset-projects?companyId=${walletInfo.companyId}`
   );
   const offsetData = await offsetResponse.json();
   const companyOffset = offsetData.find(
@@ -63,12 +64,10 @@ async function main() {
   let amountToMintOrDebt = 0;
 
   if (companyEmission.emissionTon <= emissionLimitValue) {
-    // Emisi dalam batas, mint sisanya (batas - emisi + offset)
     amountToMintOrDebt =
       emissionLimitValue - companyEmission.emissionTon + offsetTon;
     console.log("Status: Kredit karbon, amount to mint:", amountToMintOrDebt);
   } else {
-    // Emisi melebihi batas, hitung utang karbon (negatif)
     amountToMintOrDebt = offsetTon - companyEmission.emissionTon;
     console.log("Status: Utang karbon, amount (negatif):", amountToMintOrDebt);
   }

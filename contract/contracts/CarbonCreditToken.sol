@@ -7,7 +7,6 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 contract CarbonCreditToken is ERC20, Ownable {
     address public oracle;
 
-    // Utang karbon per alamat (bisa positif/negatif)
     mapping(address => int256) public carbonDebt;
 
     event OracleUpdated(address indexed oldOracle, address indexed newOracle);
@@ -28,9 +27,6 @@ contract CarbonCreditToken is ERC20, Ownable {
         emit OracleUpdated(old, _oracle);
     }
 
-    // Update carbon credit berdasarkan data oracle
-    // amount positif → mint token
-    // amount negatif → tambah utang karbon
     function updateCarbonCredit(address to, int256 amount) external onlyOracle {
         require(to != address(0), "Invalid recipient");
         require(amount != 0, "Amount cannot be zero");
@@ -44,7 +40,6 @@ contract CarbonCreditToken is ERC20, Ownable {
         }
     }
 
-    // Fungsi untuk cek utang karbon
     function getDebt(address user) external view returns (int256) {
         return carbonDebt[user];
     }
