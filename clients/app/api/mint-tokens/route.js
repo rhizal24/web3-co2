@@ -1,150 +1,220 @@
 import { NextResponse } from "next/server";
-import { exec } from "child_process";
-import { promisify } from "util";
+import { spawn } from "child_process";
 import path from "path";
-
-const execAsync = promisify(exec);
 
 export async function POST(request) {
   try {
-    const { userAddress, projectId } = await request.json();
+    console.log("🔄 API mint-tokens called");
 
+    const body = await request.json();
+    const { userAddress, projectId } = body;
+
+    console.log("📋 Request data:", { userAddress, projectId });
+
+    // Validate input
     if (!userAddress || !projectId) {
       return NextResponse.json(
-        { error: "User address and project ID are required" },
+        {
+          success: false,
+          error: "Missing required fields",
+          details: "userAddress and projectId are required",
+        },
         { status: 400 },
       );
     }
 
-    console.log(`🔄 Processing mint request for address: ${userAddress}, project: ${projectId}`);
+    // Validate Ethereum address format
+    if (!userAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid address format",
+          details: "userAddress must be a valid Ethereum address",
+        },
+        { status: 400 },
+      );
+    }
 
-    // Path ke mockOracle.js (sesuaikan dengan struktur folder Anda)
+    console.log("✅ Input validation passed");
+
+    // Path ke contract directory
     const contractDir = path.join(process.cwd(), "..", "contract");
-    const command = `cd ${contractDir} && node scripts/mockOracle.js ${userAddress} ${projectId}`;
+    const scriptPath = path.join(contractDir, "scripts", "mockOracle.js");
 
-    console.log(`🔧 Executing command: ${command}`);
-    console.log(`📁 Contract directory: ${contractDir}`);
+    console.log("📁 Contract directory:", contractDir);
+    console.log("📁 Script path:", scriptPath);
 
-    // Check if contract directory exists
-    const fs = require("fs");
-    if (!fs.existsSync(contractDir)) {
-      throw new Error(`Contract directory not found: ${contractDir}`);
-    }
+    // Execute mockOracle.js using spawn
+    return new Promise((resolve) => {
+      const env = {
+        ...process.env,
+        RECEIVER_ADDRESS: userAddress,
+        PROJECT_ID: projectId,
+      };
 
-    // Check if mockOracle.js exists
-    const oracleScript = path.join(contractDir, "scripts", "mockOracle.js");
-    if (!fs.existsSync(oracleScript)) {
-      throw new Error(`Oracle script not found: ${oracleScript}`);
-    }
+      console.log("🚀 Executing mockOracle script...");
+      console.log("📋 Environment:", { RECEIVER_ADDRESS: userAddress, PROJECT_ID: projectId });
 
-    console.log(`✅ Oracle script found: ${oracleScript}`);
+      const child = spawn(
+        "npx",
+        ["hardhat", "run", "scripts/mockOracle.js", "--network", "localhost"],
+        {
+          cwd: contractDir,
+          env: env,
+          stdio: "pipe",
+        },
+      );
 
-    // Execute mockOracle.js dengan timeout 60 detik
-    const { stdout, stderr } = await execAsync(command, {
-      timeout: 60000,
-      cwd: contractDir,
-    });
+      let stdout = "";
+      let stderr = "";
 
-    console.log("=== Oracle stdout ===");
-    console.log(stdout);
-    console.log("=== End stdout ===");
+      child.stdout.on("data", (data) => {
+        const output = data.toString();
+        stdout += output;
+        console.log("📤 Oracle stdout:", output);
+      });
 
-    if (stderr) {
-      console.log("=== Oracle stderr ===");
-      console.log(stderr);
-      console.log("=== End stderr ===");
-    }
+      child.stderr.on("data", (data) => {
+        const error = data.toString();
+        stderr += error;
+        console.log("❌ Oracle stderr:", error);
+      });
 
-    // Parse output untuk mendapatkan informasi mint
-    const lines = stdout.split("\n");
-    let carbonCredit = 0;
-    let transactionHash = "";
-    let projectInfo = "";
-    let status = "";
+      child.on("close", (code) => {
+        console.log("🏁 Oracle process finished with code:", code);
+        console.log("📤 Full stdout:", stdout);
+        console.log("❌ Full stderr:", stderr);
 
-    console.log("🔍 Parsing oracle output...");
+        if (code === 0) {
+          // Parse successful output
+          try {
+            // Extract information from stdout
+            const lines = stdout.split("\n");
 
-    for (const line of lines) {
-      console.log(`Checking line: ${line}`);
+            let carbonCredit = 0;
+            let transactionHash = "";
+            let projectName = "";
+            let status = "success";
 
-      if (line.includes("Total credit:") || line.includes("Net credit:")) {
-        const match = line.match(/(-?\d+(?:\.\d+)?)\s*CCT/);
-        if (match) {
-          carbonCredit = parseFloat(match[1]);
-          console.log(`✅ Found carbon credit: ${carbonCredit}`);
+            // Parse output untuk extract data
+            lines.forEach((line) => {
+              if (line.includes("Minted:") && line.includes("CCT")) {
+                const match = line.match(/Minted:\s*(\d+)\s*CCT/);
+                if (match) {
+                  carbonCredit = parseInt(match[1]);
+                }
+              }
+              if (line.includes("Transaction:")) {
+                const match = line.match(/Transaction:\s*(0x[a-fA-F0-9]+)/);
+                if (match) {
+                  transactionHash = match[1];
+                }
+              }
+              if (line.includes("Project:") && line.includes("(")) {
+                const match = line.match(/Project:\s*\w+\s*\(([^)]+)\)/);
+                if (match) {
+                  projectName = match[1];
+                }
+              }
+            });
+
+            resolve(
+              NextResponse.json({
+                success: true,
+                message: "Carbon credits minted successfully",
+                data: {
+                  carbonCredit,
+                  transactionHash,
+                  projectId,
+                  projectName,
+                  status,
+                  userAddress,
+                  rawOutput: stdout,
+                },
+              }),
+            );
+          } catch (parseError) {
+            console.error("❌ Error parsing oracle output:", parseError);
+            resolve(
+              NextResponse.json({
+                success: true,
+                message: "Operation completed but could not parse details",
+                data: {
+                  carbonCredit: 0,
+                  transactionHash: "unknown",
+                  projectId,
+                  status: "completed",
+                  userAddress,
+                  rawOutput: stdout,
+                },
+              }),
+            );
+          }
+        } else {
+          // Handle errors
+          let errorMessage = "Unknown error occurred";
+          let errorType = "execution_error";
+
+          if (stderr.includes("Project tidak valid") || stdout.includes("Project tidak valid")) {
+            errorMessage = `Project ID "${projectId}" tidak valid atau sudah digunakan`;
+            errorType = "invalid_project";
+          } else if (
+            stderr.includes("Wallet address not found") ||
+            stdout.includes("Wallet address not found")
+          ) {
+            errorMessage = `Wallet address tidak ditemukan dalam sistem`;
+            errorType = "invalid_wallet";
+          } else if (
+            stderr.includes("Project already used") ||
+            stdout.includes("Project already used")
+          ) {
+            errorMessage = `Project "${projectId}" sudah digunakan sebelumnya`;
+            errorType = "project_used";
+          } else if (stderr.includes("Cannot connect") || stderr.includes("ECONNREFUSED")) {
+            errorMessage =
+              "Cannot connect to blockchain network. Please ensure Hardhat node is running.";
+            errorType = "network_error";
+          } else if (stderr.includes("file not found") || stderr.includes("ENOENT")) {
+            errorMessage = "Oracle script not found. Please check system configuration.";
+            errorType = "file_not_found";
+          }
+
+          resolve(
+            NextResponse.json(
+              {
+                success: false,
+                error: errorMessage,
+                errorType: errorType,
+                details: stderr || stdout || "No error details available",
+                code: code,
+              },
+              { status: 500 },
+            ),
+          );
         }
-      }
-      if (line.includes("Transaction hash:")) {
-        transactionHash = line.split("Transaction hash:")[1]?.trim();
-        console.log(`✅ Found transaction hash: ${transactionHash}`);
-      }
-      if (line.includes("Status:")) {
-        status = line.split("Status:")[1]?.trim();
-        console.log(`✅ Found status: ${status}`);
-      }
-      if (line.includes("Valid project found:")) {
-        projectInfo = line.split("Valid project found:")[1]?.trim();
-        console.log(`✅ Found project info: ${projectInfo}`);
-      }
-    }
+      });
 
-    // Check for errors in output
-    if (stdout.includes("❌")) {
-      const errorLine = lines.find((line) => line.includes("❌"));
-      const errorMessage = errorLine?.replace("❌", "").trim() || "Oracle execution failed";
-      console.error(`❌ Oracle error found: ${errorMessage}`);
-      throw new Error(errorMessage);
-    }
-
-    if (stderr && stderr.includes("Error") && !stderr.includes("Warning")) {
-      console.error(`❌ Stderr error: ${stderr}`);
-      throw new Error(`Oracle execution error: ${stderr}`);
-    }
-
-    // Success response (even if no transaction hash - some operations might not need it)
-    const responseData = {
-      projectId,
-      userAddress,
-      carbonCredit,
-      transactionHash: transactionHash || "No transaction required",
-      status: status || "Processed",
-      projectInfo: projectInfo || "Project processed",
-      oracleOutput: stdout,
-    };
-
-    console.log("✅ Returning success response:", responseData);
-
-    return NextResponse.json({
-      success: true,
-      message: "Tokens processed successfully",
-      data: responseData,
+      child.on("error", (error) => {
+        console.error("❌ Oracle spawn error:", error);
+        resolve(
+          NextResponse.json(
+            {
+              success: false,
+              error: "Failed to execute oracle script",
+              details: error.message,
+            },
+            { status: 500 },
+          ),
+        );
+      });
     });
   } catch (error) {
-    console.error("❌ Mint API Error:", error);
-
-    let errorMessage = error.message;
-    let errorType = "execution_error";
-
-    if (error.code === "TIMEOUT") {
-      errorType = "timeout";
-      errorMessage = "Request timeout - proses minting memerlukan waktu lebih lama";
-    } else if (error.message.includes("ENOENT") || error.message.includes("not found")) {
-      errorType = "file_not_found";
-      errorMessage = "Oracle script or contract directory not found";
-    } else if (error.message.includes("Project ID tidak valid")) {
-      errorType = "invalid_project";
-    } else if (error.message.includes("Wallet address tidak ditemukan")) {
-      errorType = "invalid_wallet";
-    } else if (error.message.includes("sudah digunakan")) {
-      errorType = "project_used";
-    }
-
+    console.error("❌ API Error:", error);
     return NextResponse.json(
       {
         success: false,
-        error: "Failed to process tokens",
-        details: errorMessage,
-        type: errorType,
+        error: "Internal server error",
+        details: error.message,
       },
       { status: 500 },
     );

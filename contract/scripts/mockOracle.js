@@ -4,7 +4,7 @@ async function main() {
   const [oracleSigner] = await hre.ethers.getSigners();
 
   // UPDATE INI DENGAN ADDRESS HASIL DEPLOY BARU
-  const tokenAddress = "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9";
+  const tokenAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
   const receiverAddress =
     process.env.RECEIVER_ADDRESS ||
     "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";

@@ -262,6 +262,7 @@ export default function Home() {
 
   const [loadingTimeout, setLoadingTimeout] = useState(null);
 
+  // Perbaikan untuk handleMintToken function
   const handleMintToken = async (projectIdValue) => {
     if (!walletData.isConnected) {
       alert("Please connect your wallet first!");
@@ -269,24 +270,24 @@ export default function Home() {
     }
 
     if (!projectIdValue) {
-      alert("Please enter a project ID!");
+      alert("Please select a project!");
       return;
     }
 
     try {
-      setMintingLoading(true); // Gunakan mintingLoading instead of loading
+      setMintingLoading(true);
+      console.log("🔄 Starting mint process...");
+      console.log("📋 Project ID:", projectIdValue);
+      console.log("👤 User Address:", walletData.address);
 
       // Set backup timeout untuk loading state
       const timeoutId = setTimeout(() => {
-        console.warn("⚠️ Loading timeout reached, forcing loading to false");
+        console.warn("⚠️ Mint process timeout reached");
         setMintingLoading(false);
-        alert("⏱️ Request is taking longer than expected. Please check the results manually.");
-      }, 65000);
+        alert("⏱️ Request is taking longer than expected. Please check your balance manually.");
+      }, 60000); // 60 seconds timeout
 
       setLoadingTimeout(timeoutId);
-
-      console.log("🔄 Processing project:", projectIdValue);
-      console.log("👤 User address:", walletData.address);
 
       // Call API to mint tokens using Oracle
       console.log("📡 Calling mint API...");
@@ -303,13 +304,12 @@ export default function Home() {
       });
 
       // Clear timeout since request completed
-      if (loadingTimeout) {
-        clearTimeout(loadingTimeout);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
         setLoadingTimeout(null);
       }
 
       console.log("📡 API Response status:", response.status);
-
       const result = await response.json();
       console.log("📡 API Response data:", result);
 
@@ -323,10 +323,10 @@ export default function Home() {
         throw new Error(result.details || result.error || "Operation failed");
       }
 
-      console.log("✅ Mint API response:", result);
+      console.log("✅ Mint successful:", result);
 
       // Show success message with details
-      const { carbonCredit, transactionHash, status } = result.data;
+      const { carbonCredit, transactionHash, status, projectName } = result.data;
 
       let statusEmoji = "✅";
       let creditInfo = "";
@@ -334,16 +334,14 @@ export default function Home() {
       if (carbonCredit > 0) {
         statusEmoji = "🎉";
         creditInfo = `Carbon Credits Earned: +${carbonCredit} CCT`;
-      } else if (carbonCredit < 0) {
-        statusEmoji = "⚠️";
-        creditInfo = `Carbon Debt: ${Math.abs(carbonCredit)} CCT`;
       } else {
         statusEmoji = "ℹ️";
-        creditInfo = `No carbon credits awarded`;
+        creditInfo = `Project processed successfully`;
       }
 
       alert(
-        `${statusEmoji} Project ${projectIdValue} processed successfully!\n\n` +
+        `${statusEmoji} Project Processed Successfully!\n\n` +
+          `Project: ${projectIdValue}${projectName ? ` (${projectName})` : ""}\n` +
           `${creditInfo}\n` +
           `Status: ${status}\n` +
           `Transaction: ${transactionHash}\n\n` +
@@ -354,7 +352,8 @@ export default function Home() {
       console.log("🔄 Reloading wallet data...");
       setTimeout(() => {
         loadWalletData(walletData.address);
-      }, 2000);
+        loadAvailableProjects(); // Reload projects to update used status
+      }, 3000);
 
       // Reset project ID
       setProjectId("");
@@ -367,40 +366,36 @@ export default function Home() {
         setLoadingTimeout(null);
       }
 
-      // Handle specific error types
+      // Enhanced error handling
+      let userMessage = "";
+
       if (
         error.message.includes("Project ID tidak valid") ||
         error.message.includes("invalid_project")
       ) {
-        alert(
-          `❌ Project ID "${projectIdValue}" tidak valid atau sudah digunakan.\n\nSilakan pilih project yang tersedia dari dropdown.`,
-        );
-      } else if (error.message.includes("timeout")) {
-        alert(
-          `⏱️ Request timeout. Proses minting memerlukan waktu lebih lama.\n\nSilakan cek balance Anda dalam beberapa saat.`,
-        );
-        setTimeout(() => loadWalletData(walletData.address), 5000);
+        userMessage = `❌ Project "${projectIdValue}" tidak valid atau sudah digunakan.\n\nSilakan pilih project yang tersedia dari dropdown.`;
       } else if (
         error.message.includes("Wallet address tidak ditemukan") ||
         error.message.includes("invalid_wallet")
       ) {
-        alert(
-          `❌ Alamat wallet Anda tidak terdaftar dalam sistem.\n\nSilakan hubungi administrator.`,
-        );
+        userMessage = `❌ Alamat wallet Anda tidak terdaftar dalam sistem.\n\nWallet: ${walletData.address}\n\nSilakan hubungi administrator.`;
       } else if (
-        error.message.includes("sudah digunakan") ||
-        error.message.includes("project_used")
+        error.message.includes("project_used") ||
+        error.message.includes("sudah digunakan")
       ) {
-        alert(
-          `❌ Project "${projectIdValue}" sudah digunakan sebelumnya.\n\nSilakan pilih project lain.`,
-        );
-      } else if (error.message.includes("file_not_found") || error.message.includes("not found")) {
-        alert(
-          `❌ Configuration error: Oracle script not found.\n\nPlease check system configuration.`,
-        );
+        userMessage = `❌ Project "${projectIdValue}" sudah digunakan sebelumnya.\n\nSilakan pilih project lain.`;
+      } else if (
+        error.message.includes("network_error") ||
+        error.message.includes("Cannot connect")
+      ) {
+        userMessage = `❌ Cannot connect to blockchain network.\n\nPlease ensure:\n- Hardhat node is running\n- MetaMask is connected to localhost:8545`;
+      } else if (error.message.includes("file_not_found")) {
+        userMessage = `❌ System configuration error.\n\nOracle script not found. Please contact administrator.`;
       } else {
-        alert(`❌ Failed to process project: ${error.message}`);
+        userMessage = `❌ Failed to process project: ${error.message}`;
       }
+
+      alert(userMessage);
     } finally {
       // PENTING: Pastikan loading selalu di-set false
       console.log("🔄 Setting minting loading to false");
