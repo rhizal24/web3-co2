@@ -17,18 +17,34 @@ const emissionLimits = {
 // Dummy Data: Proyek Penghijauan (Offset karbon) per perusahaan
 const carbonOffsetProjects = [
   {
-    id: "proj1", // ID unik proyek
+    id: "proj1",
     companyId: "comp1",
     companyName: "PT Green Farm",
+    projectName: "Reforestasi Hutan Kalimantan",
     offsetTon: 50,
     used: false,
+    createdAt: "2025-01-01",
+    description: "Penanaman 1000 pohon di Kalimantan",
   },
   {
     id: "proj2",
+    companyId: "comp1",
+    companyName: "PT Green Farm",
+    projectName: "Solar Panel Installation",
+    offsetTon: 30,
+    used: false,
+    createdAt: "2025-02-01",
+    description: "Instalasi panel surya 100kW",
+  },
+  {
+    id: "proj3",
     companyId: "comp2",
     companyName: "PT Solar Energy",
+    projectName: "Wind Farm Project",
     offsetTon: 120,
     used: false,
+    createdAt: "2025-01-15",
+    description: "Pembangunan wind farm 50MW",
   },
 ];
 
@@ -39,7 +55,7 @@ const companyEmissions = [
     companyName: "PT Green Farm",
     type: "pangan",
     emissionTon: 90,
-    year: 2023, // Pastikan data tahun sesuai dengan permintaan
+    year: 2025,
     used: false,
   },
   {
@@ -47,7 +63,7 @@ const companyEmissions = [
     companyName: "PT Solar Energy",
     type: "teknologi",
     emissionTon: 160,
-    year: 2023,
+    year: 2025,
     used: false,
   },
   {
@@ -55,7 +71,7 @@ const companyEmissions = [
     companyName: "PT Auto Motors",
     type: "otomotif",
     emissionTon: 350,
-    year: 2023,
+    year: 2025,
     used: false,
   },
 ];
@@ -91,10 +107,23 @@ app.get("/api/emission-limits/:type", (req, res) => {
 
 // Endpoint 2: Proyek Penghijauan (Offset karbon)
 app.get("/api/carbon-offset-projects", (req, res) => {
-  const { companyId } = req.query;
-  const filteredProjects = carbonOffsetProjects.filter(
-    (project) => !project.used && project.companyId === companyId
-  );
+  const { companyId, projectId, available } = req.query;
+  let filteredProjects = carbonOffsetProjects;
+
+  if (companyId) {
+    filteredProjects = filteredProjects.filter(
+      (p) => p.companyId === companyId
+    );
+  }
+
+  if (projectId) {
+    filteredProjects = filteredProjects.filter((p) => p.id === projectId);
+  }
+
+  if (available === "true") {
+    filteredProjects = filteredProjects.filter((p) => !p.used);
+  }
+
   res.json(filteredProjects);
 });
 
@@ -123,20 +152,26 @@ app.get("/api/wallet/:address", (req, res) => {
 });
 
 // Endpoint 5: Mark Proyek Sebagai Sudah Digunakan
-app.post("/api/mark-project-used", (req, res) => {
-  const { companyId, projectId } = req.body;
+app.put("/api/carbon-offset-projects/:projectId/use", (req, res) => {
+  const { projectId } = req.params;
 
-  const projectIndex = carbonOffsetProjects.findIndex(
-    (project) => project.companyId === companyId && project.id === projectId
-  );
+  const project = carbonOffsetProjects.find((p) => p.id === projectId);
 
-  if (projectIndex === -1) {
-    return res.status(404).json({ error: "Proyek tidak ditemukan" });
+  if (!project) {
+    return res.status(404).json({ error: "Project tidak ditemukan" });
   }
 
-  carbonOffsetProjects[projectIndex].used = true;
+  if (project.used) {
+    return res.status(400).json({ error: "Project sudah digunakan" });
+  }
 
-  return res.json({ success: true, message: "Proyek sudah digunakan" });
+  project.used = true;
+  project.usedAt = new Date().toISOString();
+
+  res.json({
+    message: `Project ${projectId} berhasil dimarkir sebagai terpakai`,
+    project,
+  });
 });
 
 // Endpoint 6: Update Emisi Tahunan
