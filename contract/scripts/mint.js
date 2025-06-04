@@ -8,7 +8,6 @@ async function main() {
   );
   const token = CarbonCreditToken.attach(tokenAddress);
 
-  // Mint 50 token ke alamat oracle sendiri sebagai contoh
   const tx = await token.connect(oracle).mint(oracle.address, 50);
   await tx.wait();
 

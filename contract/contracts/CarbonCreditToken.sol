@@ -35,7 +35,7 @@ contract CarbonCreditToken is ERC20, Ownable {
             _mint(to, uint256(amount));
             emit Minted(to, uint256(amount));
         } else {
-            carbonDebt[to] += amount; // amount negatif, tambah utang karbon
+            carbonDebt[to] += amount; 
             emit DebtUpdated(to, carbonDebt[to]);
         }
     }
