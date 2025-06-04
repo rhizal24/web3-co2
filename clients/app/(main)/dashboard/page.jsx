@@ -12,6 +12,7 @@ import {
   getCCTInfo,
   getCarbonDebt,
   checkContractDeployment, // Tambahkan import ini
+  transferCCT,
 } from "@/utils/backend";
 import { address } from "@/utils/config"; // Tambahkan import address
 
@@ -448,22 +449,31 @@ export default function Home() {
     }
 
     try {
-      setWalletLoading(true); // Gunakan walletLoading untuk transfer
-      const { contract } = await useContract();
+      setWalletLoading(true);
 
-      // Convert amount to Wei for CCT transfer
-      const amountInWei = ethers.parseEther(transferDetails.numOfTokens);
+      console.log("🔄 Starting CCT transfer...");
+      console.log("📍 To:", transferDetails.destinationWallet);
+      console.log("💰 Amount:", transferDetails.numOfTokens);
 
-      const tx = await contract.transfer(transferDetails.destinationWallet, amountInWei);
-
-      console.log("CCT Transfer transaction:", tx.hash);
-      await tx.wait();
-
-      alert(
-        `Successfully transferred ${transferDetails.numOfTokens} CCT tokens to ${transferDetails.destinationWallet}`,
+      // Use the new transfer function
+      const result = await transferCCT(
+        transferDetails.destinationWallet,
+        transferDetails.numOfTokens,
       );
 
-      // Reload CCT balance
+      console.log("✅ Transfer result:", result);
+
+      // Show success message with details
+      alert(
+        `🎉 Transfer Successful!\n\n` +
+          `Amount: ${result.amount} CCT\n` +
+          `To: ${result.to}\n` +
+          `Transaction: ${result.transactionHash}\n` +
+          `Your new balance: ${result.newSenderBalance} CCT\n\n` +
+          `Gas used: ${result.gasUsed} units`,
+      );
+
+      // Reload wallet data to get updated balance
       await loadWalletData(walletData.address);
 
       // Reset form
@@ -472,8 +482,8 @@ export default function Home() {
         numOfTokens: "",
       });
     } catch (error) {
-      console.error("Error transferring CCT tokens:", error);
-      alert("Failed to transfer CCT tokens: " + error.message);
+      console.error("❌ Transfer error:", error);
+      alert(`❌ Transfer Failed: ${error.message}`);
     } finally {
       setWalletLoading(false);
     }
@@ -562,6 +572,8 @@ export default function Home() {
               onDestinationWalletChange={handleDestinationWalletChange}
               onTokenAmountChange={handleTokenAmountChange}
               onTransfer={handleTransfer}
+              currentUserAddress={walletData.address}
+              currentBalance={tokenBalance}
             />
           </div>
         </div>

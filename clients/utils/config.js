@@ -1,4 +1,4 @@
-export const address = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+export const address = "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9";
 export const abi = [
   {
     inputs: [
@@ -47,22 +47,34 @@ export const abi = [
       {
         indexed: true,
         internalType: "address",
-        name: "user",
+        name: "to",
         type: "address",
       },
       {
         indexed: false,
-        internalType: "int256",
-        name: "debt",
-        type: "int256",
+        internalType: "uint256",
+        name: "amount",
+        type: "uint256",
+      },
+      {
+        indexed: false,
+        internalType: "string",
+        name: "projectId",
+        type: "string",
       },
     ],
-    name: "DebtUpdated",
+    name: "CarbonCreditMinted",
     type: "event",
   },
   {
     anonymous: false,
     inputs: [
+      {
+        indexed: true,
+        internalType: "address",
+        name: "from",
+        type: "address",
+      },
       {
         indexed: true,
         internalType: "address",
@@ -76,7 +88,45 @@ export const abi = [
         type: "uint256",
       },
     ],
-    name: "Minted",
+    name: "CarbonCreditTransfer",
+    type: "event",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: "address",
+        name: "from",
+        type: "address",
+      },
+      {
+        indexed: false,
+        internalType: "uint256",
+        name: "amount",
+        type: "uint256",
+      },
+    ],
+    name: "CarbonDebtBurned",
+    type: "event",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: "address",
+        name: "user",
+        type: "address",
+      },
+      {
+        indexed: false,
+        internalType: "int256",
+        name: "debt",
+        type: "int256",
+      },
+    ],
+    name: "DebtUpdated",
     type: "event",
   },
   {
@@ -213,6 +263,73 @@ export const abi = [
     inputs: [
       {
         internalType: "address",
+        name: "from",
+        type: "address",
+      },
+      {
+        internalType: "uint256",
+        name: "amount",
+        type: "uint256",
+      },
+    ],
+    name: "burnCarbonDebt",
+    outputs: [
+      {
+        internalType: "bool",
+        name: "",
+        type: "bool",
+      },
+    ],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "address",
+        name: "user",
+        type: "address",
+      },
+    ],
+    name: "canTransfer",
+    outputs: [
+      {
+        internalType: "bool",
+        name: "",
+        type: "bool",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "address",
+        name: "user",
+        type: "address",
+      },
+      {
+        internalType: "uint256",
+        name: "amount",
+        type: "uint256",
+      },
+    ],
+    name: "canTransferAmount",
+    outputs: [
+      {
+        internalType: "bool",
+        name: "",
+        type: "bool",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "address",
         name: "",
         type: "address",
       },
@@ -273,6 +390,25 @@ export const abi = [
         type: "address",
       },
     ],
+    name: "getCarbonDebt",
+    outputs: [
+      {
+        internalType: "int256",
+        name: "",
+        type: "int256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "address",
+        name: "user",
+        type: "address",
+      },
+    ],
     name: "getDebt",
     outputs: [
       {
@@ -298,6 +434,54 @@ export const abi = [
       },
     ],
     name: "increaseAllowance",
+    outputs: [
+      {
+        internalType: "bool",
+        name: "",
+        type: "bool",
+      },
+    ],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "string",
+        name: "projectId",
+        type: "string",
+      },
+    ],
+    name: "isProjectUsed",
+    outputs: [
+      {
+        internalType: "bool",
+        name: "",
+        type: "bool",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "address",
+        name: "to",
+        type: "address",
+      },
+      {
+        internalType: "uint256",
+        name: "amount",
+        type: "uint256",
+      },
+      {
+        internalType: "string",
+        name: "projectId",
+        type: "string",
+      },
+    ],
+    name: "mintCarbonCredit",
     outputs: [
       {
         internalType: "bool",
@@ -475,6 +659,25 @@ export const abi = [
     name: "updateCarbonCredit",
     outputs: [],
     stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "string",
+        name: "",
+        type: "string",
+      },
+    ],
+    name: "usedProjects",
+    outputs: [
+      {
+        internalType: "bool",
+        name: "",
+        type: "bool",
+      },
+    ],
+    stateMutability: "view",
     type: "function",
   },
 ];

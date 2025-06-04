@@ -1,7 +1,7 @@
 "use client";
 
 import { ethers } from "ethers";
-import { abi, address } from "@/utils/config";
+import { address, abi } from "./config";
 
 export const useContract = async () => {
   try {
@@ -303,5 +303,181 @@ export const checkContractDeployment = async () => {
       message: error.message,
       error: true,
     };
+  }
+};
+
+// Enhanced transfer function dengan validation
+export const transferCCT = async (toAddress, amount) => {
+  try {
+    console.log("🔄 Starting CCT transfer...");
+    console.log("📍 To:", toAddress);
+    console.log("💰 Amount:", amount);
+
+    // Validate inputs
+    if (!toAddress || !ethers.isAddress(toAddress)) {
+      throw new Error("Invalid destination address");
+    }
+
+    if (!amount || isNaN(amount) || parseFloat(amount) <= 0) {
+      throw new Error("Invalid transfer amount");
+    }
+
+    // Get provider and signer
+    if (!window.ethereum) {
+      throw new Error("MetaMask not found");
+    }
+
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const signer = await provider.getSigner();
+    const userAddress = await signer.getAddress();
+
+    console.log("👤 From:", userAddress);
+
+    // Get contract instance
+    const contract = new ethers.Contract(address, abi, signer);
+
+    // Pre-transfer checks
+    console.log("🔍 Performing pre-transfer checks...");
+
+    // Check sender balance
+    const senderBalance = await contract.balanceOf(userAddress);
+    const senderBalanceFormatted = ethers.formatEther(senderBalance);
+    console.log("💰 Sender balance:", senderBalanceFormatted, "CCT");
+
+    // Check if sender can transfer
+    try {
+      const canTransfer = await contract.canTransfer(userAddress);
+      if (!canTransfer) {
+        const debt = await contract.getCarbonDebt(userAddress);
+        if (debt < 0) {
+          throw new Error("Cannot transfer: Outstanding carbon debt");
+        } else {
+          throw new Error("Cannot transfer: Insufficient balance");
+        }
+      }
+    } catch (error) {
+      console.warn("⚠️ Could not check canTransfer, proceeding with basic checks");
+    }
+
+    // Convert amount to Wei
+    const amountInWei = ethers.parseEther(amount.toString());
+
+    // Check if sender has enough balance
+    if (senderBalance < amountInWei) {
+      throw new Error(
+        `Insufficient balance. You have ${senderBalanceFormatted} CCT, trying to send ${amount} CCT`,
+      );
+    }
+
+    // Check specific amount validity
+    try {
+      const canTransferAmount = await contract.canTransferAmount(userAddress, amountInWei);
+      if (!canTransferAmount) {
+        throw new Error("Cannot transfer this amount");
+      }
+    } catch (error) {
+      console.warn("⚠️ Could not check canTransferAmount, proceeding");
+    }
+
+    console.log("✅ Pre-transfer checks passed");
+
+    // Execute transfer
+    console.log("📝 Executing transfer transaction...");
+    const tx = await contract.transfer(toAddress, amountInWei);
+
+    console.log("📝 Transaction sent:", tx.hash);
+    console.log("⏳ Waiting for confirmation...");
+
+    // Wait for transaction confirmation
+    const receipt = await tx.wait();
+    console.log("✅ Transaction confirmed:", receipt);
+
+    // Get updated balances
+    const newSenderBalance = await contract.balanceOf(userAddress);
+    const receiverBalance = await contract.balanceOf(toAddress);
+
+    const result = {
+      success: true,
+      transactionHash: tx.hash,
+      blockNumber: receipt.blockNumber,
+      amount: amount,
+      from: userAddress,
+      to: toAddress,
+      newSenderBalance: ethers.formatEther(newSenderBalance),
+      receiverBalance: ethers.formatEther(receiverBalance),
+      gasUsed: receipt.gasUsed.toString(),
+    };
+
+    console.log("🎉 Transfer completed:", result);
+    return result;
+  } catch (error) {
+    console.error("❌ Transfer failed:", error);
+
+    // Enhanced error handling
+    let userFriendlyMessage = error.message;
+
+    if (error.message.includes("Outstanding carbon debt")) {
+      userFriendlyMessage =
+        "Transfer failed: You have outstanding carbon debt. Please settle your debt first.";
+    } else if (error.message.includes("Insufficient balance")) {
+      userFriendlyMessage = "Transfer failed: Insufficient CCT balance.";
+    } else if (error.message.includes("Invalid destination")) {
+      userFriendlyMessage = "Transfer failed: Invalid destination address.";
+    } else if (error.message.includes("user rejected")) {
+      userFriendlyMessage = "Transfer cancelled by user.";
+    } else if (error.message.includes("gas")) {
+      userFriendlyMessage = "Transfer failed: Not enough gas or gas limit exceeded.";
+    }
+
+    throw new Error(userFriendlyMessage);
+  }
+};
+
+// Function untuk cek apakah user bisa transfer
+export const checkTransferEligibility = async (userAddress) => {
+  try {
+    const { contract } = await useContract();
+
+    const balance = await contract.balanceOf(userAddress);
+    const debt = await contract.getCarbonDebt(userAddress);
+    const canTransfer = await contract.canTransfer(userAddress);
+
+    return {
+      canTransfer,
+      balance: ethers.formatEther(balance),
+      debt: debt.toString(),
+      hasDebt: debt < 0,
+      hasBalance: balance > 0,
+    };
+  } catch (error) {
+    console.error("Error checking transfer eligibility:", error);
+    return {
+      canTransfer: false,
+      balance: "0",
+      debt: "0",
+      hasDebt: false,
+      hasBalance: false,
+    };
+  }
+};
+
+// Function untuk estimate gas untuk transfer
+export const estimateTransferGas = async (toAddress, amount) => {
+  try {
+    const { contract } = await useContract();
+    const amountInWei = ethers.parseEther(amount.toString());
+
+    const gasEstimate = await contract.transfer.estimateGas(toAddress, amountInWei);
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const gasPrice = await provider.getFeeData();
+
+    return {
+      gasLimit: gasEstimate.toString(),
+      gasPrice: gasPrice.gasPrice?.toString() || "0",
+      estimatedCost: ethers.formatEther((gasEstimate * (gasPrice.gasPrice || 0n)).toString()),
+    };
+  } catch (error) {
+    console.error("Error estimating gas:", error);
+    return null;
   }
 };
