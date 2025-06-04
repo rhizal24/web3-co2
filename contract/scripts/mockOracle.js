@@ -10,7 +10,7 @@ async function main() {
     "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
   const projectId = process.env.PROJECT_ID || "proj1";
 
-  console.log("🚀 Mock Oracle - Dynamic Project Processing");
+  console.log("🚀 Mock Oracle - Enhanced Project Validation");
   console.log("📍 Contract:", tokenAddress);
   console.log("👤 Receiver:", receiverAddress);
   console.log("🆔 Project ID:", projectId);
@@ -43,136 +43,185 @@ async function main() {
     // Import fetch untuk API calls
     const { default: fetch } = await import("node-fetch");
 
-    console.log("🔍 Step 1: Getting wallet info...");
-    let walletInfo = null;
+    console.log("🔍 Step 1: Validating project ownership and availability...");
 
+    // Enhanced project validation dengan API baru
     try {
-      const walletResponse = await fetch(
-        `http://localhost:3002/api/wallet/${receiverAddress}`
+      const validationResponse = await fetch(
+        "http://localhost:3002/api/validate-project",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId: projectId,
+            userAddress: receiverAddress,
+          }),
+        }
       );
-      if (walletResponse.ok) {
-        walletInfo = await walletResponse.json();
-        console.log("✅ Wallet info:", walletInfo);
-      } else {
-        throw new Error("Wallet not found");
+
+      const validationResult = await validationResponse.json();
+      console.log("📋 Validation result:", validationResult);
+
+      if (!validationResponse.ok || !validationResult.success) {
+        // Handle specific errors dengan pesan yang jelas
+        console.log("❌ Project validation failed");
+
+        switch (validationResult.errorType) {
+          case "invalid_wallet":
+            console.log("❌ ERROR: WALLET NOT REGISTERED");
+            console.log(
+              `   Wallet ${receiverAddress} tidak terdaftar dalam sistem`
+            );
+            console.log(
+              "   Available wallets:",
+              validationResult.availableAddresses || []
+            );
+            throw new Error(
+              `Wallet address ${receiverAddress} tidak terdaftar dalam sistem`
+            );
+
+          case "invalid_project":
+            console.log("❌ ERROR: PROJECT NOT FOUND");
+            console.log(`   Project ID "${projectId}" tidak ditemukan`);
+            if (validationResult.availableProjects) {
+              console.log("   Available projects for your company:");
+              validationResult.availableProjects.forEach((proj, idx) => {
+                console.log(
+                  `      ${idx + 1}. ${proj.id} - ${proj.name} (Used: ${
+                    proj.used
+                  })`
+                );
+              });
+            }
+            throw new Error(`Project ID "${projectId}" tidak ditemukan`);
+
+          case "unauthorized_project":
+            console.log("❌ ERROR: PROJECT NOT OWNED BY YOUR COMPANY");
+            console.log(
+              `   Project "${projectId}" milik ${validationResult.details.projectOwner}`
+            );
+            console.log(
+              `   Your company: ${validationResult.details.yourCompany}`
+            );
+            console.log("   Available projects for your company:");
+            validationResult.availableProjects.forEach((proj, idx) => {
+              console.log(
+                `      ${idx + 1}. ${proj.id} - ${proj.name} (${
+                  proj.offsetTon
+                } tons)`
+              );
+            });
+            throw new Error(
+              `Project "${projectId}" bukan milik perusahaan Anda (${validationResult.details.yourCompany}). Project ini milik ${validationResult.details.projectOwner}.`
+            );
+
+          case "project_used":
+            console.log("❌ ERROR: PROJECT ALREADY USED");
+            console.log(`   Project "${projectId}" sudah pernah digunakan`);
+            console.log(`   Used at: ${validationResult.details.usedAt}`);
+            console.log("   Available projects for your company:");
+            validationResult.availableProjects.forEach((proj, idx) => {
+              console.log(
+                `      ${idx + 1}. ${proj.id} - ${proj.name} (${
+                  proj.offsetTon
+                } tons)`
+              );
+            });
+            throw new Error(
+              `Project "${projectId}" (${validationResult.details.projectName}) sudah pernah digunakan sebelumnya`
+            );
+
+          default:
+            throw new Error(
+              validationResult.message || "Project validation failed"
+            );
+        }
       }
-    } catch (error) {
-      console.log("❌ Could not get wallet info:", error.message);
-      return;
-    }
 
-    if (walletInfo && walletInfo.companyId) {
-      console.log("🔍 Step 2: Validating project...");
+      // If validation passed
+      const { project, wallet } = validationResult;
+      console.log("✅ Project validation successful");
+      console.log(`   Project: ${project.projectName}`);
+      console.log(`   Company: ${wallet.name}`);
+      console.log(`   Offset: ${project.offsetTon} tons`);
 
+      // Check if project already used in blockchain
+      const isUsedInContract = await token.isProjectUsed(projectId);
+      if (isUsedInContract) {
+        console.log("❌ Project already marked as used in smart contract");
+        throw new Error(
+          `Project "${projectId}" sudah digunakan dalam smart contract`
+        );
+      }
+
+      // Execute minting
+      const offsetAmount = project.offsetTon;
+      const amountToMint = hre.ethers.parseEther(offsetAmount.toString());
+
+      console.log(`🎯 Minting ${offsetAmount} CCT for project ${projectId}...`);
+      console.log(`📊 Project details:`);
+      console.log(`   - Name: ${project.projectName}`);
+      console.log(`   - Company: ${project.companyName}`);
+      console.log(`   - Offset: ${project.offsetTon} tons`);
+      console.log(`   - Description: ${project.description}`);
+
+      // Mint tokens
+      const tx = await token
+        .connect(oracleSigner)
+        .mintCarbonCredit(receiverAddress, amountToMint, projectId);
+      console.log("📝 Transaction hash:", tx.hash);
+      await tx.wait();
+      console.log("✅ Minting successful!");
+
+      // Mark project as used in API
       try {
-        // Get projects untuk company ini
-        const projectResponse = await fetch(
-          `http://localhost:3002/api/carbon-offset-projects?companyId=${walletInfo.companyId}`
+        const markUsedResponse = await fetch(
+          `http://localhost:3002/api/carbon-offset-projects/${projectId}/use`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+          }
         );
 
-        if (projectResponse.ok) {
-          const projects = await projectResponse.json();
-          console.log("📋 Available projects:", projects.length);
-
-          // Find specific project
-          const validProject = projects.find(
-            (p) => p.id === projectId && !p.used
-          );
-
-          if (!validProject) {
-            console.log("❌ Project tidak valid atau sudah digunakan!");
-            console.log(
-              "🔍 Available projects for company",
-              walletInfo.companyId + ":"
-            );
-            projects.forEach((project, index) => {
-              if (project.companyId === walletInfo.companyId) {
-                console.log(
-                  `   ${index + 1}. ID: ${project.id}, Offset: ${
-                    project.offsetTon
-                  }T, Used: ${project.used}`
-                );
-              }
-            });
-            throw new Error(`Project ${projectId} tidak valid`);
-          }
-
-          console.log("✅ Valid project found:", validProject);
-
-          // 🔥 INI YANG DIPERBAIKI - Gunakan offsetTon dari project
-          const offsetAmount = validProject.offsetTon; // Ambil nilai sebenarnya
-          const amountToMint = hre.ethers.parseEther(offsetAmount.toString());
-
-          console.log(
-            `🎯 Minting ${offsetAmount} CCT for project ${projectId}...`
-          );
-          console.log(`📊 Project details:`);
-          console.log(`   - Name: ${validProject.projectName}`);
-          console.log(`   - Offset: ${validProject.offsetTon} tons`);
-          console.log(`   - Description: ${validProject.description}`);
-
-          // Mint tokens dengan amount yang benar
-          const tx = await token
-            .connect(oracleSigner)
-            .mintCarbonCredit(receiverAddress, amountToMint, projectId);
-          console.log("📝 Transaction hash:", tx.hash);
-          await tx.wait();
-          console.log("✅ Minting successful!");
-
-          // Mark project as used di API (optional)
-          try {
-            const markUsedResponse = await fetch(
-              `http://localhost:3002/api/carbon-offset-projects/${projectId}/use`,
-              {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-              }
-            );
-
-            if (markUsedResponse.ok) {
-              console.log("✅ Project marked as used in API");
-            }
-          } catch (markError) {
-            console.log("⚠️ Could not mark project as used in API");
-          }
-
-          // Check balance
-          const balance = await token.balanceOf(receiverAddress);
-          const formattedBalance = hre.ethers.formatEther(balance);
-
-          // Check if project is marked as used in contract
-          try {
-            const isUsed = await token.isProjectUsed(projectId);
-            console.log("📊 Project marked as used in contract:", isUsed);
-          } catch (error) {
-            console.log("⚠️ Could not check project status in contract");
-          }
-
-          console.log("\n" + "=".repeat(50));
-          console.log("🎉 MOCK ORACLE SUCCESS!");
-          console.log("=".repeat(50));
-          console.log(`✅ Project: ${projectId} (${validProject.projectName})`);
-          console.log(
-            `💰 Minted: ${offsetAmount} CCT (based on project offset)`
-          );
-          console.log(`💰 Total balance: ${formattedBalance} CCT`);
-          console.log(`📝 Transaction: ${tx.hash}`);
-          console.log(`🏢 Company: ${walletInfo.name}`);
-          console.log("=".repeat(50));
+        if (markUsedResponse.ok) {
+          console.log("✅ Project marked as used in API");
         } else {
-          throw new Error("Could not fetch projects from API");
+          console.log("⚠️ Could not mark project as used in API");
         }
-      } catch (projectError) {
-        console.log("❌ Project validation failed:", projectError.message);
-        return;
+      } catch (markError) {
+        console.log(
+          "⚠️ Error marking project as used in API:",
+          markError.message
+        );
       }
-    } else {
-      console.log("❌ No valid wallet info found");
-      return;
+
+      // Get updated balances
+      const balance = await token.balanceOf(receiverAddress);
+      const formattedBalance = hre.ethers.formatEther(balance);
+
+      console.log("\n" + "=".repeat(60));
+      console.log("🎉 MOCK ORACLE SUCCESS!");
+      console.log("=".repeat(60));
+      console.log(`✅ Project: ${projectId} (${project.projectName})`);
+      console.log(`💰 Minted: ${offsetAmount} CCT (based on project offset)`);
+      console.log(`💰 Total balance: ${formattedBalance} CCT`);
+      console.log(`📝 Transaction: ${tx.hash}`);
+      console.log(`🏢 Company: ${wallet.name}`);
+      console.log("=".repeat(60));
+    } catch (validationError) {
+      console.log(
+        "❌ Project validation or execution failed:",
+        validationError.message
+      );
+      throw validationError;
     }
   } catch (error) {
-    console.log("❌ Error:", error.message);
+    console.log("❌ Oracle execution failed:", error.message);
+    process.exit(1); // Exit dengan error code
   }
 }
 
-main().catch(console.error);
+main().catch((error) => {
+  console.error("❌ Fatal error:", error.message);
+  process.exit(1);
+});

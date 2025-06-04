@@ -68,238 +68,243 @@ const carbonOffsetProjects = [
   },
 ];
 
-// Dummy Data: Emisi Aktual Perusahaan dengan Tahun
-const companyEmissions = [
+// Dummy Data: User/Wallet registrations
+const walletRegistrations = [
   {
-    companyId: "comp1",
-    companyName: "PT Green Farm",
-    type: "pangan",
-    emissionTon: 90,
-    year: 2025,
-    used: false,
-  },
-  {
-    companyId: "comp2",
-    companyName: "PT Solar Energy",
-    type: "teknologi",
-    emissionTon: 160,
-    year: 2025,
-    used: false,
-  },
-  {
-    companyId: "comp3",
-    companyName: "PT Auto Motors",
-    type: "otomotif",
-    emissionTon: 350,
-    year: 2025,
-    used: false,
-  },
-];
-
-// Dummy Data: Wallet ke Identitas Perusahaan
-const walletToCompany = {
-  // Format address yang benar sesuai MetaMask (dengan mixed case)
-  "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266": {
+    address: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
     companyId: "comp1",
     type: "pangan",
     name: "PT Green Farm",
+    registeredAt: "2025-01-01",
   },
-  "0x70997970C51812dc3A010C7d01b50e0d17dc79C8": {
+  {
+    address: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
     companyId: "comp2",
     type: "teknologi",
     name: "PT Solar Energy",
+    registeredAt: "2025-01-02",
   },
-  "0x3C44CdDdB6a900fa2b585dd299e03d12fa4293BC": {
+  {
+    address: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
     companyId: "comp3",
     type: "otomotif",
     name: "PT Auto Motors",
+    registeredAt: "2025-01-03",
   },
-};
+];
 
-// Endpoint 1: Batas Emisi per Jenis Perusahaan
-app.get("/api/emission-limits/:type", (req, res) => {
-  const type = req.params.type.toLowerCase();
-  const limit = emissionLimits[type];
-  if (limit === undefined) {
-    return res.status(404).json({ error: "Jenis perusahaan tidak ditemukan" });
-  }
-  res.json({ type, limit });
-});
-
-// Endpoint 2: Proyek Penghijauan (Offset karbon)
-app.get("/api/carbon-offset-projects", (req, res) => {
-  const { companyId, projectId, available } = req.query;
-  let filteredProjects = carbonOffsetProjects;
-
-  if (companyId) {
-    filteredProjects = filteredProjects.filter(
-      (p) => p.companyId === companyId
-    );
-  }
-
-  if (projectId) {
-    filteredProjects = filteredProjects.filter((p) => p.id === projectId);
-  }
-
-  if (available === "true") {
-    filteredProjects = filteredProjects.filter((p) => !p.used);
-  }
-
-  res.json(filteredProjects);
-});
-
-// Endpoint 3: Emisi Aktual Perusahaan
-app.get("/api/company-emissions", (req, res) => {
-  const year = parseInt(req.query.year) || new Date().getFullYear();
-  const companyId = req.query.companyId;
-
-  const filteredEmissions = companyEmissions.filter(
-    (emission) =>
-      emission.year === year &&
-      !emission.used &&
-      emission.companyId === companyId
-  );
-  res.json(filteredEmissions);
-});
-
-// Endpoint 4: Mapping Wallet ke Identitas Perusahaan (Enhanced debugging)
+// API: Get wallet info by address
 app.get("/api/wallet/:address", (req, res) => {
-  const inputAddress = req.params.address;
+  try {
+    const address = req.params.address.toLowerCase();
+    console.log("🔍 Looking up wallet:", address);
 
-  console.log(`🔍 Looking for wallet address: ${inputAddress}`);
-  console.log(`📝 Input address type: ${typeof inputAddress}`);
-  console.log(`📝 Input address length: ${inputAddress.length}`);
+    const wallet = walletRegistrations.find(
+      (w) => w.address.toLowerCase() === address
+    );
 
-  // Cari dengan exact match dulu
-  let data = walletToCompany[inputAddress];
-  console.log(`🎯 Exact match result:`, data);
-
-  // Jika tidak ditemukan, cari dengan case-insensitive
-  if (!data) {
-    console.log(`🔄 Trying case-insensitive search...`);
-    const lowerInputAddress = inputAddress.toLowerCase();
-    console.log(`🔤 Lowercase input: ${lowerInputAddress}`);
-
-    const foundKey = Object.keys(walletToCompany).find((key) => {
-      console.log(
-        `🔍 Comparing: ${key.toLowerCase()} === ${lowerInputAddress}`
-      );
-      return key.toLowerCase() === lowerInputAddress;
-    });
-
-    if (foundKey) {
-      console.log(`✅ Found matching key: ${foundKey}`);
-      data = walletToCompany[foundKey];
+    if (!wallet) {
+      console.log("❌ Wallet not found for address:", address);
+      return res.status(404).json({
+        error: "Wallet address not found",
+        message: `Address ${req.params.address} is not registered in the system`,
+        availableAddresses: walletRegistrations.map((w) => w.address),
+      });
     }
+
+    console.log("✅ Wallet found:", wallet);
+    res.json(wallet);
+  } catch (error) {
+    console.error("❌ Error in wallet lookup:", error);
+    res
+      .status(500)
+      .json({ error: "Internal server error", details: error.message });
   }
-
-  if (!data) {
-    console.log(`❌ Wallet address not found: ${inputAddress}`);
-    console.log(`📋 Available addresses:`, Object.keys(walletToCompany));
-
-    // Enhanced debugging - show exact character comparison
-    Object.keys(walletToCompany).forEach((key) => {
-      console.log(`🔍 Available: "${key}" (length: ${key.length})`);
-      console.log(
-        `🔍 Input:     "${inputAddress}" (length: ${inputAddress.length})`
-      );
-      console.log(`🔍 Match: ${key === inputAddress ? "EXACT" : "NO"}`);
-      console.log(
-        `🔍 Lower Match: ${
-          key.toLowerCase() === inputAddress.toLowerCase()
-            ? "CASE-INSENSITIVE"
-            : "NO"
-        }`
-      );
-      console.log(`---`);
-    });
-
-    return res.status(404).json({
-      error: "Alamat wallet tidak ditemukan",
-      debug: {
-        inputAddress,
-        inputLength: inputAddress.length,
-        availableAddresses: Object.keys(walletToCompany),
-        inputLowercase: inputAddress.toLowerCase(),
-      },
-    });
-  }
-
-  console.log(`✅ Found wallet data for ${inputAddress}:`, data);
-  res.json(data);
 });
 
-// Debug endpoint untuk melihat available addresses
-app.get("/api/wallet/debug", (req, res) => {
-  const addresses = Object.keys(walletToCompany).map((address) => ({
-    address,
-    company: walletToCompany[address].name,
-    type: walletToCompany[address].type,
-  }));
+// API: Validate project untuk specific user
+app.post("/api/validate-project", (req, res) => {
+  try {
+    const { projectId, userAddress } = req.body;
 
-  res.json({
-    message: "Available wallet addresses",
-    addresses,
-    total: addresses.length,
-  });
+    console.log("🔍 Validating project:", { projectId, userAddress });
+
+    // Get user wallet info
+    const wallet = walletRegistrations.find(
+      (w) => w.address.toLowerCase() === userAddress.toLowerCase()
+    );
+
+    if (!wallet) {
+      return res.status(404).json({
+        success: false,
+        error: "WALLET_NOT_FOUND",
+        message: `Wallet address ${userAddress} tidak terdaftar dalam sistem`,
+        errorType: "invalid_wallet",
+      });
+    }
+
+    // Find project
+    const project = carbonOffsetProjects.find((p) => p.id === projectId);
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: "PROJECT_NOT_FOUND",
+        message: `Project ID "${projectId}" tidak ditemukan`,
+        errorType: "invalid_project",
+        availableProjects: carbonOffsetProjects
+          .filter((p) => p.companyId === wallet.companyId)
+          .map((p) => ({ id: p.id, name: p.projectName, used: p.used })),
+      });
+    }
+
+    // Check if project belongs to user's company
+    if (project.companyId !== wallet.companyId) {
+      const ownerCompany = walletRegistrations.find(
+        (w) => w.companyId === project.companyId
+      );
+
+      return res.status(403).json({
+        success: false,
+        error: "PROJECT_NOT_OWNED",
+        message: `Project "${projectId}" bukan milik perusahaan Anda`,
+        errorType: "unauthorized_project",
+        details: {
+          projectOwner: project.companyName,
+          yourCompany: wallet.name,
+          projectId: projectId,
+        },
+        availableProjects: carbonOffsetProjects
+          .filter((p) => p.companyId === wallet.companyId && !p.used)
+          .map((p) => ({
+            id: p.id,
+            name: p.projectName,
+            offsetTon: p.offsetTon,
+          })),
+      });
+    }
+
+    // Check if project already used
+    if (project.used) {
+      return res.status(409).json({
+        success: false,
+        error: "PROJECT_ALREADY_USED",
+        message: `Project "${projectId}" sudah pernah digunakan sebelumnya`,
+        errorType: "project_used",
+        details: {
+          projectId: projectId,
+          projectName: project.projectName,
+          usedAt: project.usedAt || "Unknown",
+        },
+        availableProjects: carbonOffsetProjects
+          .filter((p) => p.companyId === wallet.companyId && !p.used)
+          .map((p) => ({
+            id: p.id,
+            name: p.projectName,
+            offsetTon: p.offsetTon,
+          })),
+      });
+    }
+
+    // Project is valid!
+    res.json({
+      success: true,
+      message: "Project validation successful",
+      project: project,
+      wallet: wallet,
+    });
+  } catch (error) {
+    console.error("❌ Error validating project:", error);
+    res.status(500).json({
+      success: false,
+      error: "VALIDATION_ERROR",
+      message: "Internal server error during validation",
+      details: error.message,
+    });
+  }
 });
 
-// Endpoint 5: Mark Proyek Sebagai Sudah Digunakan
+// API: Mark project as used
 app.put("/api/carbon-offset-projects/:projectId/use", (req, res) => {
-  const { projectId } = req.params;
+  try {
+    const { projectId } = req.params;
+    const project = carbonOffsetProjects.find((p) => p.id === projectId);
 
-  const project = carbonOffsetProjects.find((p) => p.id === projectId);
+    if (!project) {
+      return res.status(404).json({ error: "Project not found" });
+    }
 
-  if (!project) {
-    return res.status(404).json({ error: "Project tidak ditemukan" });
+    project.used = true;
+    project.usedAt = new Date().toISOString();
+
+    console.log("✅ Project marked as used:", projectId);
+    res.json({ success: true, project: project });
+  } catch (error) {
+    console.error("❌ Error marking project as used:", error);
+    res.status(500).json({ error: error.message });
   }
+});
 
-  if (project.used) {
-    return res.status(400).json({ error: "Project sudah digunakan" });
+// API: Get carbon offset projects (dengan filter enhanced)
+app.get("/api/carbon-offset-projects", (req, res) => {
+  try {
+    const { companyId, available, projectId } = req.query;
+
+    let filteredProjects = [...carbonOffsetProjects];
+
+    // Filter by company
+    if (companyId) {
+      filteredProjects = filteredProjects.filter(
+        (project) => project.companyId === companyId
+      );
+    }
+
+    // Filter by availability
+    if (available === "true") {
+      filteredProjects = filteredProjects.filter((project) => !project.used);
+    }
+
+    // Filter by specific project ID
+    if (projectId) {
+      filteredProjects = filteredProjects.filter(
+        (project) => project.id === projectId
+      );
+    }
+
+    console.log("📋 Returning projects:", filteredProjects.length);
+    res.json(filteredProjects);
+  } catch (error) {
+    console.error("❌ Error fetching projects:", error);
+    res.status(500).json({ error: error.message });
   }
+});
 
-  project.used = true;
-  project.usedAt = new Date().toISOString();
-
+// Debug endpoint
+app.get("/api/wallet/debug", (req, res) => {
   res.json({
-    message: `Project ${projectId} berhasil dimarkir sebagai terpakai`,
-    project,
+    message: "API is working",
+    timestamp: new Date().toISOString(),
+    registeredWallets: walletRegistrations.length,
+    totalProjects: carbonOffsetProjects.length,
   });
 });
 
-// Endpoint 6: Update Emisi Tahunan
-app.post("/api/annual-emission-update", (req, res) => {
-  const year = req.body.year || new Date().getFullYear();
-  const companyId = req.body.companyId;
-
-  const emission = companyEmissions.find(
-    (emission) => emission.companyId === companyId && emission.year === year
-  );
-
-  if (!emission) {
-    return res.status(404).json({
-      error: "Emisi untuk perusahaan ini tidak ditemukan untuk tahun tersebut",
-    });
-  }
-
-  const emissionLimit = emissionLimits[emission.type];
-
-  if (emission.emissionTon > emissionLimit) {
-    const debt = emission.emissionTon - emissionLimit;
-    res.json({
-      success: true,
-      message: `${emission.companyName} memiliki utang karbon sebesar ${debt} ton.`,
-    });
-  } else {
-    const credit = emissionLimit - emission.emissionTon;
-    res.json({
-      success: true,
-      message: `${emission.companyName} memiliki karbon kredit sebesar ${credit} ton.`,
-    });
-  }
+// API: Get all registered wallets (for debugging)
+app.get("/api/wallets", (req, res) => {
+  res.json({
+    wallets: walletRegistrations,
+    count: walletRegistrations.length,
+  });
 });
 
-// Jalankan server
+// Start server
 app.listen(port, () => {
-  console.log(`API Dummy running at http://localhost:${port}`);
+  console.log(`🚀 API Server running on http://localhost:${port}`);
+  console.log(`📋 Available endpoints:`);
+  console.log(`   GET  /api/wallet/:address`);
+  console.log(`   POST /api/validate-project`);
+  console.log(`   GET  /api/carbon-offset-projects`);
+  console.log(`   PUT  /api/carbon-offset-projects/:projectId/use`);
+  console.log(`   GET  /api/wallet/debug`);
+  console.log(`   GET  /api/wallets`);
 });

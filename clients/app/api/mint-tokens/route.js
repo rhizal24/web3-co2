@@ -23,26 +23,53 @@ export async function POST(request) {
       );
     }
 
-    // Validate Ethereum address format
-    if (!userAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+    // Pre-validate project via API
+    console.log("🔍 Pre-validating project...");
+
+    try {
+      const validationResponse = await fetch("http://localhost:3002/api/validate-project", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, userAddress }),
+      });
+
+      if (!validationResponse.ok) {
+        const validationError = await validationResponse.json();
+        console.log("❌ Pre-validation failed:", validationError);
+
+        // Return specific error messages
+        return NextResponse.json(
+          {
+            success: false,
+            error: validationError.error,
+            message: validationError.message,
+            errorType: validationError.errorType,
+            details: validationError.details,
+            availableProjects: validationError.availableProjects,
+          },
+          { status: validationResponse.status },
+        );
+      }
+
+      const validationResult = await validationResponse.json();
+      console.log("✅ Pre-validation successful:", validationResult.message);
+    } catch (preValidationError) {
+      console.error("❌ Pre-validation error:", preValidationError);
       return NextResponse.json(
         {
           success: false,
-          error: "Invalid address format",
-          details: "userAddress must be a valid Ethereum address",
+          error: "VALIDATION_FAILED",
+          message: "Could not validate project before processing",
+          details: preValidationError.message,
         },
-        { status: 400 },
+        { status: 500 },
       );
     }
 
-    console.log("✅ Input validation passed");
+    console.log("✅ Pre-validation passed, executing oracle...");
 
     // Path ke contract directory
     const contractDir = path.join(process.cwd(), "..", "contract");
-    const scriptPath = path.join(contractDir, "scripts", "mockOracle.js");
-
-    console.log("📁 Contract directory:", contractDir);
-    console.log("📁 Script path:", scriptPath);
 
     // Execute mockOracle.js using spawn
     return new Promise((resolve) => {
@@ -53,7 +80,6 @@ export async function POST(request) {
       };
 
       console.log("🚀 Executing mockOracle script...");
-      console.log("📋 Environment:", { RECEIVER_ADDRESS: userAddress, PROJECT_ID: projectId });
 
       const child = spawn(
         "npx",
@@ -82,39 +108,29 @@ export async function POST(request) {
 
       child.on("close", (code) => {
         console.log("🏁 Oracle process finished with code:", code);
-        console.log("📤 Full stdout:", stdout);
-        console.log("❌ Full stderr:", stderr);
 
         if (code === 0) {
           // Parse successful output
           try {
-            // Extract information from stdout
             const lines = stdout.split("\n");
 
             let carbonCredit = 0;
             let transactionHash = "";
             let projectName = "";
-            let status = "success";
 
-            // Parse output untuk extract data
+            // Parse output
             lines.forEach((line) => {
               if (line.includes("Minted:") && line.includes("CCT")) {
                 const match = line.match(/Minted:\s*(\d+)\s*CCT/);
-                if (match) {
-                  carbonCredit = parseInt(match[1]);
-                }
+                if (match) carbonCredit = parseInt(match[1]);
               }
               if (line.includes("Transaction:")) {
                 const match = line.match(/Transaction:\s*(0x[a-fA-F0-9]+)/);
-                if (match) {
-                  transactionHash = match[1];
-                }
+                if (match) transactionHash = match[1];
               }
               if (line.includes("Project:") && line.includes("(")) {
                 const match = line.match(/Project:\s*\w+\s*\(([^)]+)\)/);
-                if (match) {
-                  projectName = match[1];
-                }
+                if (match) projectName = match[1];
               }
             });
 
@@ -127,14 +143,12 @@ export async function POST(request) {
                   transactionHash,
                   projectId,
                   projectName,
-                  status,
+                  status: "success",
                   userAddress,
-                  rawOutput: stdout,
                 },
               }),
             );
           } catch (parseError) {
-            console.error("❌ Error parsing oracle output:", parseError);
             resolve(
               NextResponse.json({
                 success: true,
@@ -145,38 +159,36 @@ export async function POST(request) {
                   projectId,
                   status: "completed",
                   userAddress,
-                  rawOutput: stdout,
                 },
               }),
             );
           }
         } else {
-          // Handle errors
+          // Enhanced error parsing
           let errorMessage = "Unknown error occurred";
           let errorType = "execution_error";
 
-          if (stderr.includes("Project tidak valid") || stdout.includes("Project tidak valid")) {
-            errorMessage = `Project ID "${projectId}" tidak valid atau sudah digunakan`;
-            errorType = "invalid_project";
-          } else if (
-            stderr.includes("Wallet address not found") ||
-            stdout.includes("Wallet address not found")
+          if (
+            stdout.includes("bukan milik perusahaan Anda") ||
+            stderr.includes("bukan milik perusahaan")
           ) {
-            errorMessage = `Wallet address tidak ditemukan dalam sistem`;
-            errorType = "invalid_wallet";
+            errorMessage = `Project "${projectId}" bukan milik perusahaan Anda`;
+            errorType = "unauthorized_project";
           } else if (
-            stderr.includes("Project already used") ||
-            stdout.includes("Project already used")
+            stdout.includes("sudah pernah digunakan") ||
+            stderr.includes("sudah pernah digunakan")
           ) {
-            errorMessage = `Project "${projectId}" sudah digunakan sebelumnya`;
+            errorMessage = `Project "${projectId}" sudah pernah digunakan sebelumnya`;
             errorType = "project_used";
+          } else if (stdout.includes("tidak terdaftar") || stderr.includes("tidak terdaftar")) {
+            errorMessage = `Wallet address tidak terdaftar dalam sistem`;
+            errorType = "invalid_wallet";
+          } else if (stdout.includes("tidak ditemukan") || stderr.includes("tidak ditemukan")) {
+            errorMessage = `Project ID "${projectId}" tidak ditemukan`;
+            errorType = "invalid_project";
           } else if (stderr.includes("Cannot connect") || stderr.includes("ECONNREFUSED")) {
-            errorMessage =
-              "Cannot connect to blockchain network. Please ensure Hardhat node is running.";
+            errorMessage = "Cannot connect to blockchain network";
             errorType = "network_error";
-          } else if (stderr.includes("file not found") || stderr.includes("ENOENT")) {
-            errorMessage = "Oracle script not found. Please check system configuration.";
-            errorType = "file_not_found";
           }
 
           resolve(
@@ -186,7 +198,7 @@ export async function POST(request) {
                 error: errorMessage,
                 errorType: errorType,
                 details: stderr || stdout || "No error details available",
-                code: code,
+                projectId: projectId,
               },
               { status: 500 },
             ),
@@ -195,7 +207,6 @@ export async function POST(request) {
       });
 
       child.on("error", (error) => {
-        console.error("❌ Oracle spawn error:", error);
         resolve(
           NextResponse.json(
             {

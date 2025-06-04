@@ -280,16 +280,14 @@ export default function Home() {
       console.log("📋 Project ID:", projectIdValue);
       console.log("👤 User Address:", walletData.address);
 
-      // Set backup timeout untuk loading state
       const timeoutId = setTimeout(() => {
         console.warn("⚠️ Mint process timeout reached");
         setMintingLoading(false);
         alert("⏱️ Request is taking longer than expected. Please check your balance manually.");
-      }, 60000); // 60 seconds timeout
+      }, 60000);
 
       setLoadingTimeout(timeoutId);
 
-      // Call API to mint tokens using Oracle
       console.log("📡 Calling mint API...");
 
       const response = await fetch("/api/mint-tokens", {
@@ -303,7 +301,6 @@ export default function Home() {
         }),
       });
 
-      // Clear timeout since request completed
       if (timeoutId) {
         clearTimeout(timeoutId);
         setLoadingTimeout(null);
@@ -313,19 +310,93 @@ export default function Home() {
       const result = await response.json();
       console.log("📡 API Response data:", result);
 
-      if (!response.ok) {
+      if (!response.ok || !result.success) {
         console.error("❌ API Error:", result);
-        throw new Error(result.details || result.error || "Failed to mint tokens");
-      }
 
-      if (!result.success) {
-        console.error("❌ Operation failed:", result);
-        throw new Error(result.details || result.error || "Operation failed");
+        // Enhanced error handling berdasarkan errorType
+        let userMessage = "";
+
+        switch (result.errorType) {
+          case "invalid_wallet":
+            userMessage =
+              `❌ Wallet Tidak Terdaftar\n\n` +
+              `Alamat wallet Anda (${walletData.address}) tidak terdaftar dalam sistem.\n\n` +
+              `Silakan hubungi administrator untuk mendaftarkan wallet Anda.`;
+            break;
+
+          case "invalid_project":
+            userMessage =
+              `❌ Project Tidak Ditemukan\n\n` +
+              `Project ID "${projectIdValue}" tidak ditemukan dalam sistem.\n\n` +
+              `Silakan pilih project yang tersedia dari dropdown.`;
+
+            if (result.availableProjects && result.availableProjects.length > 0) {
+              userMessage += `\n\nProject yang tersedia:\n`;
+              result.availableProjects.slice(0, 3).forEach((proj, idx) => {
+                userMessage += `${idx + 1}. ${proj.id} - ${proj.name}\n`;
+              });
+            }
+            break;
+
+          case "unauthorized_project":
+            const details = result.details || {};
+            userMessage =
+              `❌ Project Bukan Milik Perusahaan Anda\n\n` +
+              `Project "${projectIdValue}" adalah milik ${details.projectOwner || "perusahaan lain"}.\n` +
+              `Perusahaan Anda: ${details.yourCompany || "Unknown"}\n\n` +
+              `Anda hanya dapat menggunakan project milik perusahaan sendiri.`;
+
+            if (result.availableProjects && result.availableProjects.length > 0) {
+              userMessage += `\n\nProject yang tersedia untuk perusahaan Anda:\n`;
+              result.availableProjects.slice(0, 3).forEach((proj, idx) => {
+                userMessage += `${idx + 1}. ${proj.id} - ${proj.name} (${proj.offsetTon} tons)\n`;
+              });
+            } else {
+              userMessage += `\n\nTidak ada project yang tersedia untuk perusahaan Anda saat ini.`;
+            }
+            break;
+
+          case "project_used":
+            const projectDetails = result.details || {};
+            userMessage =
+              `❌ Project Sudah Digunakan\n\n` +
+              `Project "${projectIdValue}" sudah pernah digunakan sebelumnya.\n\n` +
+              `Setiap project hanya dapat digunakan sekali untuk mint carbon credits.`;
+
+            if (result.availableProjects && result.availableProjects.length > 0) {
+              userMessage += `\n\nProject lain yang masih tersedia:\n`;
+              result.availableProjects.slice(0, 3).forEach((proj, idx) => {
+                userMessage += `${idx + 1}. ${proj.id} - ${proj.name} (${proj.offsetTon} tons)\n`;
+              });
+            } else {
+              userMessage += `\n\nTidak ada project lain yang tersedia saat ini.`;
+            }
+            break;
+
+          case "network_error":
+            userMessage =
+              `❌ Koneksi Blockchain Gagal\n\n` +
+              `Tidak dapat terhubung ke jaringan blockchain.\n\n` +
+              `Pastikan:\n` +
+              `• Hardhat node sedang berjalan\n` +
+              `• MetaMask terhubung ke localhost:8545\n` +
+              `• Tidak ada firewall yang memblokir koneksi`;
+            break;
+
+          default:
+            userMessage =
+              `❌ Gagal Memproses Project\n\n` +
+              `${result.message || result.error || "Unknown error"}\n\n` +
+              `Silakan coba lagi atau hubungi administrator jika masalah berlanjut.`;
+        }
+
+        alert(userMessage);
+        throw new Error(result.message || result.error);
       }
 
       console.log("✅ Mint successful:", result);
 
-      // Show success message with details
+      // Show success message
       const { carbonCredit, transactionHash, status, projectName } = result.data;
 
       let statusEmoji = "✅";
@@ -340,68 +411,37 @@ export default function Home() {
       }
 
       alert(
-        `${statusEmoji} Project Processed Successfully!\n\n` +
+        `${statusEmoji} Project Berhasil Diproses!\n\n` +
           `Project: ${projectIdValue}${projectName ? ` (${projectName})` : ""}\n` +
           `${creditInfo}\n` +
           `Status: ${status}\n` +
           `Transaction: ${transactionHash}\n\n` +
-          `Your wallet balance will be updated shortly.`,
+          `Balance wallet Anda akan diperbarui dalam beberapa saat.`,
       );
 
-      // Reload wallet data to get updated balance
-      console.log("🔄 Reloading wallet data...");
+      // Reload data
       setTimeout(() => {
         loadWalletData(walletData.address);
-        loadAvailableProjects(); // Reload projects to update used status
+        loadAvailableProjects();
       }, 3000);
 
-      // Reset project ID
       setProjectId("");
     } catch (error) {
       console.error("❌ Error processing project:", error);
 
-      // Clear timeout on error
       if (loadingTimeout) {
         clearTimeout(loadingTimeout);
         setLoadingTimeout(null);
       }
 
-      // Enhanced error handling
-      let userMessage = "";
-
-      if (
-        error.message.includes("Project ID tidak valid") ||
-        error.message.includes("invalid_project")
-      ) {
-        userMessage = `❌ Project "${projectIdValue}" tidak valid atau sudah digunakan.\n\nSilakan pilih project yang tersedia dari dropdown.`;
-      } else if (
-        error.message.includes("Wallet address tidak ditemukan") ||
-        error.message.includes("invalid_wallet")
-      ) {
-        userMessage = `❌ Alamat wallet Anda tidak terdaftar dalam sistem.\n\nWallet: ${walletData.address}\n\nSilakan hubungi administrator.`;
-      } else if (
-        error.message.includes("project_used") ||
-        error.message.includes("sudah digunakan")
-      ) {
-        userMessage = `❌ Project "${projectIdValue}" sudah digunakan sebelumnya.\n\nSilakan pilih project lain.`;
-      } else if (
-        error.message.includes("network_error") ||
-        error.message.includes("Cannot connect")
-      ) {
-        userMessage = `❌ Cannot connect to blockchain network.\n\nPlease ensure:\n- Hardhat node is running\n- MetaMask is connected to localhost:8545`;
-      } else if (error.message.includes("file_not_found")) {
-        userMessage = `❌ System configuration error.\n\nOracle script not found. Please contact administrator.`;
-      } else {
-        userMessage = `❌ Failed to process project: ${error.message}`;
+      // Fallback error message jika belum di-handle di atas
+      if (!error.message.includes("❌")) {
+        alert(`❌ Gagal memproses project: ${error.message}`);
       }
-
-      alert(userMessage);
     } finally {
-      // PENTING: Pastikan loading selalu di-set false
       console.log("🔄 Setting minting loading to false");
       setMintingLoading(false);
 
-      // Clear timeout jika masih ada
       if (loadingTimeout) {
         clearTimeout(loadingTimeout);
         setLoadingTimeout(null);
