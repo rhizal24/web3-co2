@@ -169,11 +169,7 @@ app.post("/api/validate-project", (req, res) => {
         error: "PROJECT_NOT_OWNED",
         message: `Project "${projectId}" bukan milik perusahaan Anda`,
         errorType: "unauthorized_project",
-        details: {
-          projectOwner: project.companyName,
-          yourCompany: wallet.name,
-          projectId: projectId,
-        },
+
         availableProjects: carbonOffsetProjects
           .filter((p) => p.companyId === wallet.companyId && !p.used)
           .map((p) => ({

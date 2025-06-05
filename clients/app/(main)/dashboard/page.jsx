@@ -342,8 +342,7 @@ export default function Home() {
             const details = result.details || {};
             userMessage =
               `❌ Project Bukan Milik Perusahaan Anda\n\n` +
-              `Project "${projectIdValue}" adalah milik ${details.projectOwner || "perusahaan lain"}.\n` +
-              `Perusahaan Anda: ${details.yourCompany || "Unknown"}\n\n` +
+              `Project "${projectIdValue}" adalah milik perusahaan lain".\n\n` +
               `Anda hanya dapat menggunakan project milik perusahaan sendiri.`;
 
             if (result.availableProjects && result.availableProjects.length > 0) {

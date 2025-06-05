@@ -97,12 +97,6 @@ async function main() {
 
           case "unauthorized_project":
             console.log("❌ ERROR: PROJECT NOT OWNED BY YOUR COMPANY");
-            console.log(
-              `   Project "${projectId}" milik ${validationResult.details.projectOwner}`
-            );
-            console.log(
-              `   Your company: ${validationResult.details.yourCompany}`
-            );
             console.log("   Available projects for your company:");
             validationResult.availableProjects.forEach((proj, idx) => {
               console.log(
@@ -112,7 +106,7 @@ async function main() {
               );
             });
             throw new Error(
-              `Project "${projectId}" bukan milik perusahaan Anda (${validationResult.details.yourCompany}). Project ini milik ${validationResult.details.projectOwner}.`
+              `Project "${projectId}" bukan milik perusahaan Anda.`
             );
 
           case "project_used":
