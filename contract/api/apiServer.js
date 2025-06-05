@@ -14,6 +14,25 @@ const emissionLimits = {
   lain: 200,
 };
 
+// TAMBAHAN BARU: Data penggunaan emisi tahunan per company
+const annualEmissions = {
+  2023: {
+    comp1: { actual: 120, year: 2023, lastUpdated: "2024-01-15" }, // PT Green Farm - Deficit
+    comp2: { actual: 130, year: 2023, lastUpdated: "2024-01-15" }, // PT Solar Energy - Surplus
+    comp3: { actual: 350, year: 2023, lastUpdated: "2024-01-15" }, // PT Auto Motors - Deficit
+  },
+  2024: {
+    comp1: { actual: 80, year: 2024, lastUpdated: "2024-12-31" }, // PT Green Farm - Surplus
+    comp2: { actual: 140, year: 2024, lastUpdated: "2024-12-31" }, // PT Solar Energy - Surplus
+    comp3: { actual: 280, year: 2024, lastUpdated: "2024-12-31" }, // PT Auto Motors - Surplus
+  },
+  2025: {
+    comp1: { actual: 95, year: 2025, lastUpdated: "2025-06-05" }, // PT Green Farm - Surplus
+    comp2: { actual: 160, year: 2025, lastUpdated: "2025-06-05" }, // PT Solar Energy - Deficit
+    comp3: { actual: 320, year: 2025, lastUpdated: "2025-06-05" }, // PT Auto Motors - Deficit
+  },
+};
+
 // Dummy Data: Proyek Penghijauan (Offset karbon) per perusahaan
 const carbonOffsetProjects = [
   {
@@ -293,6 +312,241 @@ app.get("/api/wallets", (req, res) => {
   });
 });
 
+// API BARU: Get emission data untuk company dan year tertentu
+app.get("/api/emissions/:address/:year", (req, res) => {
+  try {
+    const { address, year } = req.params;
+
+    console.log(
+      `🔍 Looking up emissions for address: ${address}, year: ${year}`
+    );
+
+    // Find wallet/company info
+    const wallet = walletRegistrations.find(
+      (w) => w.address.toLowerCase() === address.toLowerCase()
+    );
+
+    if (!wallet) {
+      return res.status(404).json({
+        success: false,
+        error: "WALLET_NOT_FOUND",
+        message: `Wallet address ${address} tidak terdaftar dalam sistem`,
+      });
+    }
+
+    // Get emission limit berdasarkan company type
+    const emissionLimit = emissionLimits[wallet.type];
+    if (!emissionLimit) {
+      return res.status(404).json({
+        success: false,
+        error: "EMISSION_LIMIT_NOT_FOUND",
+        message: `Emission limit untuk tipe ${wallet.type} tidak ditemukan`,
+      });
+    }
+
+    // Get actual emission data untuk year tertentu
+    const yearData = annualEmissions[year];
+    if (!yearData) {
+      return res.status(404).json({
+        success: false,
+        error: "YEAR_DATA_NOT_FOUND",
+        message: `Data emisi untuk tahun ${year} tidak tersedia`,
+        availableYears: Object.keys(annualEmissions),
+      });
+    }
+
+    const companyEmission = yearData[wallet.companyId];
+    if (!companyEmission) {
+      return res.status(404).json({
+        success: false,
+        error: "COMPANY_EMISSION_NOT_FOUND",
+        message: `Data emisi untuk company ${wallet.name} di tahun ${year} tidak tersedia`,
+      });
+    }
+
+    // Calculate surplus/deficit
+    const actualEmission = companyEmission.actual;
+    const carbonBalance = emissionLimit - actualEmission; // Positive = surplus, Negative = deficit
+    const status = carbonBalance >= 0 ? "surplus" : "deficit";
+
+    const result = {
+      success: true,
+      data: {
+        company: {
+          name: wallet.name,
+          type: wallet.type,
+          companyId: wallet.companyId,
+          address: wallet.address,
+        },
+        emission: {
+          year: parseInt(year),
+          limit: emissionLimit,
+          actual: actualEmission,
+          balance: carbonBalance,
+          status: status,
+          lastUpdated: companyEmission.lastUpdated,
+        },
+        calculation: {
+          formula: "limit - actual = balance",
+          example: `${emissionLimit} - ${actualEmission} = ${carbonBalance}`,
+          unit: "tons CO2",
+        },
+      },
+    };
+
+    console.log("✅ Emission data found:", result.data);
+    res.json(result);
+  } catch (error) {
+    console.error("❌ Error fetching emission data:", error);
+    res.status(500).json({
+      success: false,
+      error: "INTERNAL_ERROR",
+      message: "Internal server error",
+      details: error.message,
+    });
+  }
+});
+
+// API BARU: Get emission summary untuk semua years
+app.get("/api/emissions/:address", (req, res) => {
+  try {
+    const { address } = req.params;
+
+    console.log(`🔍 Looking up all emissions for address: ${address}`);
+
+    const wallet = walletRegistrations.find(
+      (w) => w.address.toLowerCase() === address.toLowerCase()
+    );
+
+    if (!wallet) {
+      return res.status(404).json({
+        success: false,
+        error: "WALLET_NOT_FOUND",
+        message: `Wallet address ${address} tidak terdaftar dalam sistem`,
+      });
+    }
+
+    const emissionLimit = emissionLimits[wallet.type];
+    const summary = [];
+
+    // Get data untuk semua years
+    Object.keys(annualEmissions).forEach((year) => {
+      const yearData = annualEmissions[year];
+      const companyEmission = yearData[wallet.companyId];
+
+      if (companyEmission) {
+        const actualEmission = companyEmission.actual;
+        const carbonBalance = emissionLimit - actualEmission;
+        const status = carbonBalance >= 0 ? "surplus" : "deficit";
+
+        summary.push({
+          year: parseInt(year),
+          limit: emissionLimit,
+          actual: actualEmission,
+          balance: carbonBalance,
+          status: status,
+          lastUpdated: companyEmission.lastUpdated,
+        });
+      }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        company: {
+          name: wallet.name,
+          type: wallet.type,
+          address: wallet.address,
+        },
+        emissionHistory: summary,
+        totalYears: summary.length,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error fetching emission summary:", error);
+    res.status(500).json({
+      success: false,
+      error: "INTERNAL_ERROR",
+      message: "Internal server error",
+      details: error.message,
+    });
+  }
+});
+
+// API BARU: Update emission data (simulate oracle update)
+app.put("/api/emissions/:address/:year", (req, res) => {
+  try {
+    const { address, year } = req.params;
+    const { actualEmission } = req.body;
+
+    console.log(
+      `🔄 Updating emissions for address: ${address}, year: ${year}, actual: ${actualEmission}`
+    );
+
+    // Validate input
+    if (!actualEmission || isNaN(actualEmission) || actualEmission < 0) {
+      return res.status(400).json({
+        success: false,
+        error: "INVALID_EMISSION_DATA",
+        message: "actualEmission harus berupa angka positif",
+      });
+    }
+
+    const wallet = walletRegistrations.find(
+      (w) => w.address.toLowerCase() === address.toLowerCase()
+    );
+
+    if (!wallet) {
+      return res.status(404).json({
+        success: false,
+        error: "WALLET_NOT_FOUND",
+        message: `Wallet address ${address} tidak terdaftar dalam sistem`,
+      });
+    }
+
+    // Ensure year data exists
+    if (!annualEmissions[year]) {
+      annualEmissions[year] = {};
+    }
+
+    // Update emission data
+    annualEmissions[year][wallet.companyId] = {
+      actual: parseFloat(actualEmission),
+      year: parseInt(year),
+      lastUpdated: new Date().toISOString(),
+    };
+
+    // Calculate new balance
+    const emissionLimit = emissionLimits[wallet.type];
+    const carbonBalance = emissionLimit - actualEmission;
+    const status = carbonBalance >= 0 ? "surplus" : "deficit";
+
+    console.log("✅ Emission data updated successfully");
+
+    res.json({
+      success: true,
+      message: "Emission data updated successfully",
+      data: {
+        company: wallet.name,
+        year: parseInt(year),
+        limit: emissionLimit,
+        actual: parseFloat(actualEmission),
+        balance: carbonBalance,
+        status: status,
+        lastUpdated: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error updating emission data:", error);
+    res.status(500).json({
+      success: false,
+      error: "INTERNAL_ERROR",
+      message: "Internal server error",
+      details: error.message,
+    });
+  }
+});
+
 // Start server
 app.listen(port, () => {
   console.log(`🚀 API Server running on http://localhost:${port}`);
@@ -301,6 +555,9 @@ app.listen(port, () => {
   console.log(`   POST /api/validate-project`);
   console.log(`   GET  /api/carbon-offset-projects`);
   console.log(`   PUT  /api/carbon-offset-projects/:projectId/use`);
+  console.log(`   GET  /api/emissions/:address/:year`); // NEW
+  console.log(`   GET  /api/emissions/:address`); // NEW
+  console.log(`   PUT  /api/emissions/:address/:year`); // NEW
   console.log(`   GET  /api/wallet/debug`);
   console.log(`   GET  /api/wallets`);
 });

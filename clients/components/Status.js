@@ -1,17 +1,23 @@
 import { cn } from "@/lib/utils";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 
 export default function Status({
-  childeren,
+  children,
   className,
   token,
   status,
+  statusColor = "green",
   onProjectIdChange,
   onMintToken,
   ...props
 }) {
   const [projectId, setProjectId] = useState("");
+
+  // Debug log
+  useEffect(() => {
+    console.log("🔍 Status component received:", { status, statusColor });
+  }, [status, statusColor]);
 
   const handleInputChange = (e) => {
     const value = e.target.value;
@@ -29,13 +35,26 @@ export default function Status({
     }
   };
 
+  // Function to get circle color based on statusColor
+  const getCircleClass = () => {
+    switch (statusColor) {
+      case "green":
+        return "bg-green-400"; // Green circle
+      case "brown":
+        return "bg-red-500"; // Red circle for Brown Emitter
+      case "gray":
+      default:
+        return "bg-white"; // White circle for Neutral
+    }
+  };
+
   return (
     <div className="flex w-full items-center justify-between">
       <div className="flex items-center gap-3">
         <div className="font-eudoxus-bold items-center text-center text-3xl text-[#163956]">
           Status:
         </div>
-        <div className="mt-2 h-4 w-4 rounded-full bg-green-400"></div>
+        <div className={`mt-2 h-4 w-4 rounded-full ${getCircleClass()}`}></div>
         <div className="font-eudoxus-light text-3xl">{status}</div>
       </div>
       <div className="flex h-full w-[57.5%] items-center justify-between">
@@ -63,10 +82,11 @@ export default function Status({
 }
 
 Status.propTypes = {
-  childeren: PropTypes.node,
+  children: PropTypes.node, // Fix typo: childeren -> children
   className: PropTypes.string,
   token: PropTypes.string,
   status: PropTypes.string.isRequired,
+  statusColor: PropTypes.string, // Add statusColor prop
   onProjectIdChange: PropTypes.func,
   onMintToken: PropTypes.func,
 };

@@ -179,22 +179,80 @@ export const getCCTInfo = async () => {
   }
 };
 
-// Function untuk mendapatkan debt (jika ada)
+// REPLACE: getCarbonDebt function dengan implementasi real
 export const getCarbonDebt = async (userAddress) => {
   try {
+    console.log("🔍 Getting real carbon debt for:", userAddress);
+
     const { contract } = await useContract();
 
-    // Cek apakah function getCarbonDebt exist di contract
-    if (typeof contract.getCarbonDebt === "function") {
-      const debt = await contract.getCarbonDebt(userAddress);
-      return ethers.formatEther(debt);
+    // Call getCarbonDebt function dari smart contract
+    const debtResult = await contract.getCarbonDebt(userAddress);
+    console.log("📊 Raw debt result from contract:", debtResult.toString());
+
+    // Convert BigInt to readable format
+    const debtValue = debtResult.toString();
+
+    // Format debt value
+    let formattedDebt;
+
+    if (debtValue === "0") {
+      formattedDebt = "0.0";
     } else {
-      console.log("getCarbonDebt function not available in contract");
-      return "0";
+      // If negative, show as positive number (debt amount)
+      const isNegative = debtValue.startsWith("-");
+      const absoluteValue = debtValue.replace("-", "");
+
+      if (isNegative) {
+        // Convert from wei to ether for negative values (actual debt)
+        const debtInEther = ethers.formatEther(absoluteValue);
+        const debtNumber = parseFloat(debtInEther);
+
+        // Format dengan 1 decimal place, remove trailing zeros
+        if (debtNumber % 1 === 0) {
+          formattedDebt = `${debtNumber.toFixed(1)}`; // 20.0
+        } else {
+          formattedDebt = `${debtNumber.toString()}`; // 20.5 atau 20.25
+        }
+      } else {
+        // Positive or zero means no debt
+        formattedDebt = "0.0";
+      }
     }
+
+    console.log("✅ Formatted carbon debt:", formattedDebt);
+    return formattedDebt;
   } catch (error) {
-    console.error("Error getting carbon debt:", error);
-    return "0";
+    console.error("❌ Error getting carbon debt from contract:", error);
+
+    // Fallback: try to get from API if smart contract fails
+    try {
+      console.log("🔄 Trying API fallback...");
+      const response = await fetch(`http://localhost:3002/api/emissions/${userAddress}/2025`);
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data.emission.balance < 0) {
+          const apiDebt = Math.abs(data.data.emission.balance);
+
+          // Same formatting for API fallback
+          if (apiDebt % 1 === 0) {
+            const formattedApiDebt = `${apiDebt.toFixed(1)}`; // 20.0
+            console.log("✅ Got debt from API fallback:", formattedApiDebt);
+            return formattedApiDebt;
+          } else {
+            const formattedApiDebt = `${apiDebt.toString()}`; // 20.5
+            console.log("✅ Got debt from API fallback:", formattedApiDebt);
+            return formattedApiDebt;
+          }
+        }
+      }
+    } catch (apiError) {
+      console.warn("⚠️ API fallback also failed:", apiError);
+    }
+
+    console.warn("⚠️ Using fallback debt value: 0.0");
+    return "0.0"; // Fallback value
   }
 };
 
