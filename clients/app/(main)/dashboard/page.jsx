@@ -9,7 +9,7 @@ import TransferForm from "@/components/TransferForm";
 import { getCCTBalance, getCCTInfo, getCarbonDebt, transferCCT } from "@/utils/backend";
 
 export default function Home() {
-  // ===== WALLET STATE =====
+  // ===== STATE MANAGEMENT =====
   const [walletData, setWalletData] = useState({
     address: "",
     provider: null,
@@ -17,36 +17,47 @@ export default function Home() {
     isConnected: false,
   });
 
-  // ===== TOKEN & DEBT STATE =====
-  const [tokenBalance, setTokenBalance] = useState("0");
-  const [carbonDebt, setCarbonDebt] = useState("0");
-  const [tokenInfo, setTokenInfo] = useState({
-    name: "Carbon Credit Token",
-    symbol: "CCT",
-    decimals: 18,
+  const [tokenData, setTokenData] = useState({
+    balance: "0",
+    debt: "0",
+    info: {
+      name: "Carbon Credit Token",
+      symbol: "CCT",
+      decimals: 18,
+    },
   });
 
-  // ===== LOADING STATES =====
-  const [walletLoading, setWalletLoading] = useState(false);
-  const [mintingLoading, setMintingLoading] = useState(false);
-  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [loadingStates, setLoadingStates] = useState({
+    wallet: false,
+    minting: false,
+    projects: false,
+    timeout: null,
+  });
 
-  // ===== PROJECT & TRANSFER STATE =====
-  const [projectId, setProjectId] = useState("");
-  const [availableProjects, setAvailableProjects] = useState([]);
+  const [projectData, setProjectData] = useState({
+    selectedId: "",
+    availableProjects: [],
+  });
+
   const [transferData, setTransferData] = useState({
     destinationWallet: "",
     numOfTokens: "",
   });
-  const [loadingTimeout, setLoadingTimeout] = useState(null);
 
   // ===== INITIALIZATION =====
   useEffect(() => {
     checkWalletConnection();
     return () => {
-      if (loadingTimeout) clearTimeout(loadingTimeout);
+      if (loadingStates.timeout) clearTimeout(loadingStates.timeout);
     };
   }, []);
+
+  useEffect(() => {
+    if (walletData.isConnected && walletData.address) {
+      const timer = setTimeout(loadAvailableProjects, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [walletData.isConnected, walletData.address]);
 
   // ===== STATUS CALCULATION =====
   const calculateCompanyStatus = () => {
@@ -54,10 +65,8 @@ export default function Home() {
       return { status: "Not Connected", color: "gray" };
     }
 
-    const tokenAmount = parseFloat(tokenBalance) || 0;
-    const debtAmount = parseFloat(carbonDebt) || 0;
-
-    console.log("🧮 Status calculation:", { tokenAmount, debtAmount });
+    const tokenAmount = parseFloat(tokenData.balance) || 0;
+    const debtAmount = parseFloat(tokenData.debt) || 0;
 
     if (tokenAmount > debtAmount) {
       return { status: "Green Contributor", color: "green" };
@@ -84,7 +93,7 @@ export default function Home() {
 
   const handleConnectWallet = async () => {
     try {
-      setWalletLoading(true);
+      updateLoadingState("wallet", true);
 
       if (!window.ethereum) {
         throw new Error("MetaMask is not installed. Please install MetaMask to continue.");
@@ -101,61 +110,60 @@ export default function Home() {
 
       setWalletData({
         address: userAddress,
-        provider: provider,
-        signer: signer,
+        provider,
+        signer,
         isConnected: true,
       });
 
-      // Load token info
-      try {
-        const cctInfo = await getCCTInfo();
-        setTokenInfo(cctInfo);
-      } catch (error) {
-        console.warn("⚠️ Using default token info:", error.message);
-      }
+      await Promise.all([loadTokenInfo(), loadWalletData(userAddress)]);
 
-      // Load wallet data
-      await loadWalletData(userAddress);
       alert("Wallet connected successfully!");
     } catch (error) {
       console.error("❌ Wallet connection error:", error);
 
-      let errorMessage = "Failed to connect wallet: " + error.message;
-      if (error.message.includes("User rejected")) {
-        errorMessage = "Connection cancelled by user.";
-      } else if (error.message.includes("MetaMask")) {
-        errorMessage = "Please install MetaMask to connect your wallet.";
-      }
+      const errorMessages = {
+        "User rejected": "Connection cancelled by user.",
+        MetaMask: "Please install MetaMask to connect your wallet.",
+      };
+
+      const errorMessage = Object.keys(errorMessages).find((key) => error.message.includes(key))
+        ? errorMessages[Object.keys(errorMessages).find((key) => error.message.includes(key))]
+        : `Failed to connect wallet: ${error.message}`;
 
       alert(errorMessage);
     } finally {
-      setWalletLoading(false);
+      updateLoadingState("wallet", false);
+    }
+  };
+
+  const loadTokenInfo = async () => {
+    try {
+      const cctInfo = await getCCTInfo();
+      setTokenData((prev) => ({ ...prev, info: cctInfo }));
+    } catch (error) {
+      console.warn("⚠️ Using default token info:", error.message);
     }
   };
 
   const loadWalletData = async (userAddress) => {
     try {
-      // Get CCT balance
-      try {
-        const cctBalance = await getCCTBalance(userAddress);
-        setTokenBalance(cctBalance);
-      } catch (error) {
-        console.warn("⚠️ Could not get CCT balance:", error.message);
-        setTokenBalance("0");
-      }
+      const [cctBalance, carbonDebt] = await Promise.all([
+        getCCTBalance(userAddress).catch(() => "0"),
+        getCarbonDebt(userAddress).catch(() => "0"),
+      ]);
 
-      // Get carbon debt
-      try {
-        const debt = await getCarbonDebt(userAddress);
-        setCarbonDebt(debt);
-      } catch (error) {
-        console.warn("⚠️ Could not get carbon debt:", error.message);
-        setCarbonDebt("0");
-      }
+      setTokenData((prev) => ({
+        ...prev,
+        balance: cctBalance,
+        debt: carbonDebt,
+      }));
     } catch (error) {
       console.error("Error loading wallet data:", error);
-      setTokenBalance("0");
-      setCarbonDebt("0");
+      setTokenData((prev) => ({
+        ...prev,
+        balance: "0",
+        debt: "0",
+      }));
     }
   };
 
@@ -164,53 +172,54 @@ export default function Home() {
     if (!walletData.isConnected || !walletData.address) return;
 
     try {
-      setProjectsLoading(true);
+      updateLoadingState("projects", true);
 
-      // Get wallet info
-      let walletResponse = await fetch(`http://localhost:3002/api/wallet/${walletData.address}`);
-      if (!walletResponse.ok) {
-        walletResponse = await fetch(
-          `http://localhost:3002/api/wallet/${walletData.address.toLowerCase()}`,
-        );
-      }
+      const walletInfo = await fetchWalletInfo(walletData.address);
+      const projects = await fetchCompanyProjects(walletInfo.companyId);
 
-      if (!walletResponse.ok) {
-        throw new Error(`Wallet address not found: ${walletData.address}`);
-      }
-
-      const walletInfo = await walletResponse.json();
-
-      // Get available projects
-      const projectsResponse = await fetch(
-        `http://localhost:3002/api/carbon-offset-projects?companyId=${walletInfo.companyId}&available=true`,
-      );
-
-      if (!projectsResponse.ok) {
-        throw new Error("Failed to fetch projects");
-      }
-
-      const projects = await projectsResponse.json();
-      setAvailableProjects(projects);
+      setProjectData((prev) => ({ ...prev, availableProjects: projects }));
     } catch (error) {
       console.error("❌ Error loading projects:", error);
-      setAvailableProjects([]);
+      setProjectData((prev) => ({ ...prev, availableProjects: [] }));
     } finally {
-      setProjectsLoading(false);
+      updateLoadingState("projects", false);
     }
   };
 
-  // Load projects when wallet connected
-  useEffect(() => {
-    if (walletData.isConnected && walletData.address) {
-      const timer = setTimeout(() => {
-        loadAvailableProjects();
-      }, 1000);
-      return () => clearTimeout(timer);
+  const fetchWalletInfo = async (address) => {
+    const urls = [
+      `http://localhost:3002/api/wallet/${address}`,
+      `http://localhost:3002/api/wallet/${address.toLowerCase()}`,
+    ];
+
+    for (const url of urls) {
+      try {
+        const response = await fetch(url);
+        if (response.ok) {
+          return await response.json();
+        }
+      } catch (error) {
+        continue;
+      }
     }
-  }, [walletData.isConnected, walletData.address]);
+
+    throw new Error(`Wallet address not found: ${address}`);
+  };
+
+  const fetchCompanyProjects = async (companyId) => {
+    const response = await fetch(
+      `http://localhost:3002/api/carbon-offset-projects?companyId=${companyId}&available=true`,
+    );
+
+    if (!response.ok) {
+      throw new Error("Failed to fetch projects");
+    }
+
+    return await response.json();
+  };
 
   const handleProjectIdChange = (newProjectId) => {
-    setProjectId(newProjectId);
+    setProjectData((prev) => ({ ...prev, selectedId: newProjectId }));
   };
 
   const handleMintToken = async (projectIdValue) => {
@@ -225,15 +234,14 @@ export default function Home() {
     }
 
     try {
-      setMintingLoading(true);
+      updateLoadingState("minting", true);
 
-      // Set timeout for long-running requests
       const timeoutId = setTimeout(() => {
-        setMintingLoading(false);
+        updateLoadingState("minting", false);
         alert("⏱️ Request is taking longer than expected. Please check your balance manually.");
       }, 60000);
 
-      setLoadingTimeout(timeoutId);
+      updateLoadingState("timeout", timeoutId);
 
       const response = await fetch("/api/mint-tokens", {
         method: "POST",
@@ -244,66 +252,61 @@ export default function Home() {
         }),
       });
 
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        setLoadingTimeout(null);
-      }
+      clearTimeout(timeoutId);
+      updateLoadingState("timeout", null);
 
       const result = await response.json();
 
       if (!response.ok || !result.success) {
-        // Handle different error types
-        let userMessage = "";
-        switch (result.errorType) {
-          case "invalid_wallet":
-            userMessage = `❌ Wallet ${walletData.address} tidak terdaftar dalam sistem.`;
-            break;
-          case "invalid_project":
-            userMessage = `❌ Project "${projectIdValue}" tidak ditemukan.`;
-            break;
-          case "unauthorized_project":
-            userMessage = `❌ Project "${projectIdValue}" bukan milik perusahaan Anda.`;
-            break;
-          case "project_used":
-            userMessage = `❌ Project "${projectIdValue}" sudah pernah digunakan.`;
-            break;
-          default:
-            userMessage = `❌ Gagal memproses project: ${result.message || result.error}`;
-        }
-
-        alert(userMessage);
-        throw new Error(result.message || result.error);
+        handleMintingError(result, projectIdValue);
+        return;
       }
 
-      // Success message
-      const { carbonCredit, transactionHash, projectName } = result.data;
-
-      alert(
-        `✅ Project Berhasil Diproses!\n\n` +
-          `Project: ${projectIdValue}${projectName ? ` (${projectName})` : ""}\n` +
-          `Carbon Credits: +${carbonCredit} CCT\n` +
-          `Transaction: ${transactionHash}`,
-      );
-
-      // Reload data
-      setTimeout(() => {
-        loadWalletData(walletData.address);
-        loadAvailableProjects();
-      }, 3000);
-
-      setProjectId("");
+      handleMintingSuccess(result, projectIdValue);
     } catch (error) {
       console.error("❌ Error processing project:", error);
-      if (!error.message.includes("❌")) {
-        alert(`❌ Gagal memproses project: ${error.message}`);
-      }
+      alert(`❌ Gagal memproses project: ${error.message}`);
     } finally {
-      setMintingLoading(false);
-      if (loadingTimeout) {
-        clearTimeout(loadingTimeout);
-        setLoadingTimeout(null);
+      updateLoadingState("minting", false);
+      if (loadingStates.timeout) {
+        clearTimeout(loadingStates.timeout);
+        updateLoadingState("timeout", null);
       }
     }
+  };
+
+  const handleMintingError = (result, projectIdValue) => {
+    const errorMessages = {
+      invalid_wallet: `❌ Wallet ${walletData.address} tidak terdaftar dalam sistem.`,
+      invalid_project: `❌ Project "${projectIdValue}" tidak ditemukan.`,
+      unauthorized_project: `❌ Project "${projectIdValue}" bukan milik perusahaan Anda.`,
+      project_used: `❌ Project "${projectIdValue}" sudah pernah digunakan.`,
+    };
+
+    const userMessage =
+      errorMessages[result.errorType] ||
+      `❌ Gagal memproses project: ${result.message || result.error}`;
+
+    alert(userMessage);
+  };
+
+  const handleMintingSuccess = (result, projectIdValue) => {
+    const { carbonCredit, transactionHash, projectName } = result.data;
+
+    alert(
+      `✅ Project Berhasil Diproses!\n\n` +
+        `Project: ${projectIdValue}${projectName ? ` (${projectName})` : ""}\n` +
+        `Carbon Credits: +${carbonCredit} CCT\n` +
+        `Transaction: ${transactionHash}`,
+    );
+
+    // Refresh data after successful mint
+    setTimeout(() => {
+      loadWalletData(walletData.address);
+      loadAvailableProjects();
+    }, 3000);
+
+    setProjectData((prev) => ({ ...prev, selectedId: "" }));
   };
 
   // ===== TRANSFER FUNCTIONS =====
@@ -327,7 +330,7 @@ export default function Home() {
     }
 
     try {
-      setWalletLoading(true);
+      updateLoadingState("wallet", true);
 
       const result = await transferCCT(
         transferDetails.destinationWallet,
@@ -348,15 +351,42 @@ export default function Home() {
       console.error("❌ Transfer error:", error);
       alert(`❌ Transfer Failed: ${error.message}`);
     } finally {
-      setWalletLoading(false);
+      updateLoadingState("wallet", false);
     }
   };
 
-  // ===== RENDER =====
+  // ===== UTILITY FUNCTIONS =====
+  const updateLoadingState = (key, value) => {
+    setLoadingStates((prev) => ({ ...prev, [key]: value }));
+  };
+
+  // ===== RENDER COMPONENTS =====
+  const renderLoadingOverlay = (isLoading, title, description) => {
+    if (!isLoading) return null;
+
+    return (
+      <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black">
+        <div className="mx-4 w-full max-w-md rounded-lg bg-white p-8 shadow-2xl">
+          <div className="flex flex-col items-center space-y-4">
+            <div className="h-12 w-12 animate-spin rounded-full border-4 border-green-600 border-t-transparent"></div>
+            <div className="text-center">
+              <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+              <p className="mt-1 text-sm text-gray-600">{description}</p>
+              {title.includes("Processing") && (
+                <p className="mt-2 text-xs text-gray-500">This may take up to 60 seconds</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ===== MAIN RENDER =====
   const companyStatus = calculateCompanyStatus();
 
   return (
-    <div className="item-center flex h-screen w-full flex-col items-center gap-6 bg-blue-50/50">
+    <div className="flex h-screen w-full flex-col items-center gap-6 bg-blue-50/50">
       {/* Navigation */}
       <div className="w-full">
         <Navbar
@@ -368,37 +398,16 @@ export default function Home() {
       </div>
 
       {/* Loading Overlays */}
-      {walletLoading && (
-        <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black">
-          <div className="mx-4 w-full max-w-md rounded-lg bg-white p-8 shadow-2xl">
-            <div className="flex flex-col items-center space-y-4">
-              <div className="h-12 w-12 animate-spin rounded-full border-4 border-green-600 border-t-transparent"></div>
-              <div className="text-center">
-                <h3 className="text-lg font-semibold text-gray-900">Connecting Wallet</h3>
-                <p className="mt-1 text-sm text-gray-600">
-                  Loading wallet data and token information...
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
+      {renderLoadingOverlay(
+        loadingStates.wallet,
+        "Connecting Wallet",
+        "Loading wallet data and token information...",
       )}
 
-      {mintingLoading && (
-        <div className="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black">
-          <div className="mx-4 w-full max-w-md rounded-lg bg-white p-8 shadow-2xl">
-            <div className="flex flex-col items-center space-y-4">
-              <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
-              <div className="text-center">
-                <h3 className="text-lg font-semibold text-gray-900">Processing Project</h3>
-                <p className="mt-1 text-sm text-gray-600">
-                  Validating project and calculating carbon credits...
-                </p>
-                <p className="mt-2 text-xs text-gray-500">This may take up to 60 seconds</p>
-              </div>
-            </div>
-          </div>
-        </div>
+      {renderLoadingOverlay(
+        loadingStates.minting,
+        "Processing Project",
+        "Validating project and calculating carbon credits...",
       )}
 
       {/* Main Content */}
@@ -406,11 +415,11 @@ export default function Home() {
         {/* Token Info & Debt Info */}
         <div className="flex w-full items-center justify-center gap-6">
           <TokenInfo
-            token={tokenBalance}
-            tokenSymbol={tokenInfo.symbol}
-            tokenName={tokenInfo.name}
+            token={tokenData.balance}
+            tokenSymbol={tokenData.info.symbol}
+            tokenName={tokenData.info.name}
           />
-          <DebtInfo token={carbonDebt} />
+          <DebtInfo token={tokenData.debt} />
         </div>
 
         {/* Status Component */}
@@ -432,7 +441,7 @@ export default function Home() {
             onTokenAmountChange={handleTokenAmountChange}
             onTransfer={handleTransfer}
             currentUserAddress={walletData.address}
-            currentBalance={tokenBalance}
+            currentBalance={tokenData.balance}
           />
         </div>
       </div>

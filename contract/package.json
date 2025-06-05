@@ -10,8 +10,7 @@
     "compile": "hardhat compile",
     "deploy": "hardhat run scripts/deploy.js --network localhost",
     "verify": "hardhat verify --network localhost",
-    "api": "node api/apiServer.js",
-    "node": "npx hardhat node"
+    "api": "node api/apiServer.js"
   },
   "keywords": [],
   "author": "",
