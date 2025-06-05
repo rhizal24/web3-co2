@@ -28,7 +28,7 @@ git --version
 ### 1. Clone Repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/rhizal24/web3-co2.git
 cd web3-co2
 ```
 ### 2. Install Dependencies
