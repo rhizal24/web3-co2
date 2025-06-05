@@ -3,7 +3,14 @@ import React from "react";
 import PropTypes from "prop-types";
 import Image from "next/image";
 
-export default function Navbar({ childeren, className, address, isConnected, onConnectWallet, ...props }) {
+export default function Navbar({
+  childeren,
+  className,
+  address,
+  isConnected,
+  onConnectWallet,
+  ...props
+}) {
   const formatAddress = (addr) => {
     if (!addr) return "Not Connected";
     return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
@@ -18,9 +25,9 @@ export default function Navbar({ childeren, className, address, isConnected, onC
         )}
         {...props}
       >
-        <div className="flex items-center justify-center gap-8">
-          <div className="ml-4">
-            <Image src={"/cc.svg"} alt="Logo" width={50} height={50} className="h-16 w-16" />
+        <div className="flex items-center justify-center gap-4">
+          <div className="ml-3">
+            <Image src={"/cc.svg"} alt="Logo" width={50} height={50} className="h-12 w-12" />
           </div>
           <div className="flex flex-row gap-2 text-[22px]">
             <div className="font-eudoxus-bold text-[#213356]">Wallet Address:</div>
