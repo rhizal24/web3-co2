@@ -197,6 +197,4 @@ MODE=emission COMPANY_ADDRESS=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 YEAR=20
 - [API Docs](http://localhost:3002/api/wallets)
 - [Hardhat Console](http://127.0.0.1:8545)
 
----
 
-🚀✨ **Happy Coding!**
