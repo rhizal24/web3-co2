@@ -584,5 +584,4 @@ app.listen(port, () => {
   console.log(
     `   GET  /api/wallet/debug                       - API status debug`
   );
-  console.log(`\n💡 Test with: http://localhost:${port}/api/wallet/debug`);
 });
