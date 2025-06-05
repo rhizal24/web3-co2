@@ -187,12 +187,9 @@ function displayDeploymentResults(contractAddress, oracleAddress) {
   console.log("3. Start your frontend application");
   console.log("4. Test token minting with oracle script");
 
-  console.log("\n🚀 Quick Test Commands:");
+  console.log("\n🚀 Emision Test Commands:");
   console.log(
-    `   npm run oracle:project -- --project=proj1 --receiver=${oracleAddress}`
-  );
-  console.log(
-    `   npm run oracle:emission -- --address=${oracleAddress} --year=2024`
+    `   MODE=emission COMPANY_ADDRESS=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 YEAR=2024 npx hardhat run scripts/mockOracle.js --network localhost`
   );
 
   console.log("\n" + "=".repeat(50));
