@@ -189,7 +189,10 @@ function displayDeploymentResults(contractAddress, oracleAddress) {
 
   console.log("\n🚀 Emision Test Commands:");
   console.log(
-    `   MODE=emission COMPANY_ADDRESS=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 YEAR=2024 npx hardhat run scripts/mockOracle.js --network localhost`
+    `   MODE=emission COMPANY_ADDRESS=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 YEAR=2025 npx hardhat run scripts/mockOracle.js --network localhost`
+  );
+  console.log(
+    `   MODE=emission COMPANY_ADDRESS=0x70997970C51812dc3A010C7d01b50e0d17dc79C8 YEAR=2025 npx hardhat run scripts/mockOracle.js --network localhost`
   );
 
   console.log("\n" + "=".repeat(50));
